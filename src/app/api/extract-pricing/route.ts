@@ -20,11 +20,25 @@ export async function POST(request: NextRequest) {
     let fileContent = ''
 
     if (fileExt === 'pdf' || fileType === 'application/pdf') {
-      // Use pdf-parse library to properly extract text from PDF
+      // Use pdf-parse library to extract text
       const buffer = await file.arrayBuffer()
-      const pdfParser = new PDFParse({ data: new Uint8Array(buffer) })
-      const textResult = await pdfParser.getText()
-      fileContent = textResult.text
+      try {
+        const pdfParser = new PDFParse({ data: new Uint8Array(buffer) })
+        const textResult = await pdfParser.getText()
+        fileContent = textResult.text
+
+        // Normalize whitespace and remove weird characters
+        fileContent = fileContent
+          .replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '') // Remove control characters
+          .replace(/\s+/g, ' ') // Collapse multiple whitespaces
+      } catch (pdfError) {
+        console.error('PDF parse error:', pdfError)
+        return NextResponse.json({
+          success: false,
+          error: 'Failed to parse PDF. This might be an image-based PDF that requires OCR.',
+          debug: { errorType: (pdfError as any).name }
+        }, { status: 400 })
+      }
     } else if (fileExt === 'csv' || fileType === 'text/csv') {
       fileContent = await file.text()
     } else if (fileExt === 'xlsx' || fileExt === 'xls') {
