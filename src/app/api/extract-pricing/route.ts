@@ -83,16 +83,20 @@ export async function POST(request: NextRequest) {
     const pricingData = extractPricingFromContent(fileContent, fileExt)
 
     if (pricingData.length === 0) {
-      // Return debug info to see what's being extracted
-      const firstLines = fileContent.split('\n').slice(0, 10).join('\n')
+      // Return detailed debug info
+      const headerMatch = fileContent.match(/S\.NO\s+PRODUCTS\s+PKG\s+PRICE\s+HSN\s+CODE\s+GST/i)
+      const firstLines = fileContent.split('\n').slice(0, 15).join('\n')
+      const contextAround = headerMatch ? fileContent.substring(Math.max(0, fileContent.indexOf(headerMatch[0]) - 100), fileContent.indexOf(headerMatch[0]) + 200) : 'Header not found'
+
       return NextResponse.json({
         success: false,
         error: 'No pricing data found in file.',
         debug: {
+          headerFound: !!headerMatch,
           firstLines: firstLines,
           totalChars: fileContent.length,
-          hexSample: Buffer.from(fileContent.slice(0, 100)).toString('hex'),
-          message: 'Check the debug info above - this shows the raw extracted text'
+          contextAroundHeader: contextAround,
+          message: 'Header found: ' + (!!headerMatch) + '. Check if format matches expected pattern.'
         }
       }, { status: 400 })
     }
