@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
           debug: { errorType: (pdfError as any).message }
         }, { status: 400 })
       }
-    } else if (fileExt === 'csv' || fileType === 'text/csv') {
+    } else if (fileExt === 'csv' || fileExt === 'txt' || fileType === 'text/csv' || fileType === 'text/plain') {
       fileContent = await file.text()
     } else if (fileExt === 'xlsx' || fileExt === 'xls') {
       // For Excel files, we'd need to parse with a library like xlsx
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
     } else {
       return NextResponse.json({
         success: false,
-        error: 'Unsupported file format. Please upload PDF, CSV, or Excel file.'
+        error: 'Unsupported file format. Please upload PDF, CSV, TXT, or Excel file.'
       }, { status: 400 })
     }
 
