@@ -20,22 +20,30 @@ export async function POST(request: NextRequest) {
 
     if (fileExt === 'pdf' || fileType === 'application/pdf') {
       // For PDFs, read as text (basic extraction)
-      // In production, use a proper PDF library like pdf-parse
-      const buffer = await file.arrayBuffer()
-      fileContent = Buffer.from(buffer).toString('utf-8')
-    } else if (fileExt === 'csv' || fileType === 'text/csv') {
+      // PDFs are complex - for now we'll extract what text we can
+      try {
+        const buffer = await file.arrayBuffer()
+        const text = Buffer.from(buffer).toString('utf-8')
+        // Filter out non-text binary data
+        fileContent = text.replace(/[^\x20-\x7E\n\r|,]/g, ' ')
+      } catch (err) {
+        console.error('PDF parsing error:', err)
+        return NextResponse.json({
+          success: false,
+          error: 'Could not extract text from PDF. Try converting to CSV first or ensure PDF contains text (not scanned image).'
+        }, { status: 400 })
+      }
+    } else if (fileExt === 'csv' || fileType === 'text/csv' || fileType === 'text/plain') {
       fileContent = await file.text()
     } else if (fileExt === 'xlsx' || fileExt === 'xls') {
-      // For Excel files, we'd need to parse with a library like xlsx
-      // For now, return a message asking to convert to CSV
       return NextResponse.json({
         success: false,
-        error: 'Please convert Excel files to CSV format and re-upload'
+        error: 'Excel files not yet supported. Please convert to CSV and re-upload.'
       }, { status: 400 })
     } else {
       return NextResponse.json({
         success: false,
-        error: 'Unsupported file format. Please upload PDF, CSV, or Excel file.'
+        error: 'Unsupported file format. Please upload CSV or PDF file.'
       }, { status: 400 })
     }
 
@@ -45,7 +53,7 @@ export async function POST(request: NextRequest) {
     if (pricingData.length === 0) {
       return NextResponse.json({
         success: false,
-        error: 'No pricing data found in file. Expected format: Item Name | HSN Code | Unit Price | GST %'
+        error: 'No pricing data found. Expected format:\n• Pipe-separated: Item Name | HSN Code | Unit Price | GST %\n• CSV: Item Name, HSN Code, Unit Price, GST %'
       }, { status: 400 })
     }
 
@@ -56,13 +64,13 @@ export async function POST(request: NextRequest) {
       success: true,
       itemCount: pricingData.length,
       csv: csv,
-      preview: pricingData.slice(0, 5) // First 5 items for preview
+      preview: pricingData.slice(0, 5)
     })
   } catch (error) {
     console.error('Extraction error:', error)
     return NextResponse.json({
       success: false,
-      error: 'Failed to extract pricing. Please check the file format.'
+      error: `Failed to extract pricing: ${error instanceof Error ? error.message : 'Unknown error'}`
     }, { status: 500 })
   }
 }

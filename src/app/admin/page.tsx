@@ -62,7 +62,9 @@ export default function AdminPage() {
         })
         setShowCSVPreview(true)
       } else {
-        alert(result.error || 'Failed to extract pricing')
+        const errorMsg = result.error || 'Failed to extract pricing'
+        console.error('Extraction error:', errorMsg)
+        alert(errorMsg)
       }
     } catch (err) {
       console.error('Upload failed:', err)
