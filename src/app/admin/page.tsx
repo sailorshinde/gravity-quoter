@@ -51,7 +51,16 @@ export default function AdminPage() {
         body: formData
       })
 
+      console.log('Response status:', res.status)
       const result = await res.json()
+      console.log('Response data:', result)
+
+      if (!res.ok) {
+        const errorMsg = result.error || `Server error: ${res.status}`
+        console.error('Server error:', errorMsg)
+        alert(errorMsg)
+        return
+      }
 
       if (result.success) {
         setDraftPricing({

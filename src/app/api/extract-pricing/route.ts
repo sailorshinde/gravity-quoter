@@ -2,12 +2,22 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export async function POST(request: NextRequest) {
   try {
-    console.log('Extract-pricing API called')
+    console.log('Extract-pricing API called at', new Date().toISOString())
 
-    const formData = await request.formData()
+    let formData
+    try {
+      formData = await request.formData()
+      console.log('FormData parsed successfully')
+    } catch (err) {
+      console.error('FormData parsing failed:', err)
+      return NextResponse.json({
+        success: false,
+        error: `FormData parsing failed: ${err instanceof Error ? err.message : 'Unknown error'}`
+      }, { status: 400 })
+    }
+
     const file = formData.get('file') as File
-
-    console.log('File received:', file?.name, 'Type:', file?.type, 'Size:', file?.size)
+    console.log('File received:', { name: file?.name, type: file?.type, size: file?.size })
 
     if (!file) {
       return NextResponse.json({
