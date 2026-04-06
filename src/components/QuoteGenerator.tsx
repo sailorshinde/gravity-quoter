@@ -14,19 +14,23 @@ interface QuoteItem {
   packing?: string
 }
 
-export default function QuoteGenerator({ pricingSource, preloadedItems = [], onQuoteGenerated }: any) {
-  const [clientName, setClientName] = useState('')
+export default function QuoteGenerator({ pricingSource, preloadedItems = [], preloadedClientName = '', onQuoteGenerated }: any) {
+  const [clientName, setClientName] = useState(preloadedClientName)
   const [items, setItems] = useState<QuoteItem[]>([
     { description: '', quantity: 1, unitPrice: 0 },
   ])
   const [loading, setLoading] = useState(false)
+  const [showUnmatchedWarning, setShowUnmatchedWarning] = useState(false)
 
-  // Update items when preloadedItems changes
+  // Update items and client name when preloaded data changes
   useEffect(() => {
+    if (preloadedClientName) {
+      setClientName(preloadedClientName)
+    }
     if (preloadedItems.length > 0) {
       setItems(preloadedItems)
     }
-  }, [preloadedItems])
+  }, [preloadedItems, preloadedClientName])
 
   const addItem = () => {
     setItems([...items, { description: '', quantity: 1, unitPrice: 0 }])
@@ -43,9 +47,23 @@ export default function QuoteGenerator({ pricingSource, preloadedItems = [], onQ
   }
 
   const generateQuote = async () => {
-    if (!clientName || items.some(i => !i.description)) {
-      alert('Please fill in client name and all item descriptions')
+    if (!clientName) {
+      alert('Please enter client name')
       return
+    }
+
+    if (items.some(i => !i.description)) {
+      alert('Please fill in all item descriptions')
+      return
+    }
+
+    // Check for unpriced items (price = 0)
+    const unpricedItems = items.filter(i => i.unitPrice === 0 && i.description)
+    if (unpricedItems.length > 0) {
+      setShowUnmatchedWarning(true)
+      if (!confirm(`${unpricedItems.length} items have no price set. Add prices before generating quote?\n\nCancel to edit prices, OK to continue.`)) {
+        return
+      }
     }
 
     setLoading(true)
@@ -107,7 +125,7 @@ export default function QuoteGenerator({ pricingSource, preloadedItems = [], onQ
 
         {/* Manual Item Entry */}
         {items.map((item, i) => (
-          <div key={i} className="grid grid-cols-12 gap-3 items-end">
+          <div key={i} className={`grid grid-cols-12 gap-3 items-end p-2 rounded ${item.unitPrice === 0 && item.description ? 'bg-orange-50 border border-orange-200' : ''}`}>
             <input
               type="text"
               value={item.description}
@@ -127,7 +145,7 @@ export default function QuoteGenerator({ pricingSource, preloadedItems = [], onQ
               step="0.01"
               value={item.unitPrice}
               onChange={(e) => updateItem(i, 'unitPrice', +e.target.value)}
-              className="col-span-3 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              className={`col-span-3 px-3 py-2 border rounded-lg text-sm ${item.unitPrice === 0 && item.description ? 'border-orange-300 bg-orange-50' : 'border-gray-300'}`}
               placeholder="Price"
             />
             <button
@@ -136,6 +154,11 @@ export default function QuoteGenerator({ pricingSource, preloadedItems = [], onQ
             >
               ✕
             </button>
+            {item.unitPrice === 0 && item.description && (
+              <div className="col-span-12 text-xs text-orange-600">
+                ⚠️ Price needed for this item
+              </div>
+            )}
           </div>
         ))}
         <button

@@ -112,23 +112,34 @@ export default function RequirementsUploader({ onRequirementsLoaded }: any) {
     }
   }
 
-  // Add matched items to quote
+  // Add all items (matched + unmatched) to quote
   const addToQuote = () => {
-    const quoteItems = requirements
-      .filter(r => r.matched && r.matchedItem)
-      .map(r => ({
-        description: `${r.itemDescription} (${r.uom})`,
-        quantity: r.qty,
-        unitPrice: r.matchedItem!.price,
-        notes: `Brand: ${r.brand || 'Not specified'} | Spec: ${r.specification}`,
-        hsn: r.matchedItem!.hsn,
-        gst: r.matchedItem!.gst,
-        packing: r.matchedItem!.packing,
-      }))
+    const quoteItems = requirements.map(r => ({
+      description: `${r.itemDescription} (${r.uom})`,
+      quantity: r.qty,
+      unitPrice: r.matched && r.matchedItem ? r.matchedItem.price : 0, // 0 for unmatched, user can edit
+      notes: `Brand: ${r.brand || 'Not specified'} | Spec: ${r.specification}`,
+      hsn: r.matched && r.matchedItem ? r.matchedItem.hsn : 'N/A',
+      gst: r.matched && r.matchedItem ? r.matchedItem.gst : '18%',
+      packing: r.matched && r.matchedItem ? r.matchedItem.packing : r.uom,
+    }))
 
-    onRequirementsLoaded(quoteItems)
+    onRequirementsLoaded({
+      items: quoteItems,
+      clientName: extractClientName(), // Pass extracted client name
+    })
     setShowPreview(false)
     setRequirements([])
+  }
+
+  // Extract client name from Excel (check common positions)
+  const extractClientName = (): string => {
+    // Common patterns for client name in Excel:
+    // 1. In the first few rows, looking for patterns like "Client:" or "School:"
+    // 2. In a specific cell before the data starts
+    // For now, return empty - user can manually enter if not found
+    // This can be enhanced based on specific Excel formats
+    return ''
   }
 
   return (

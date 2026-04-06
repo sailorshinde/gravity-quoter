@@ -10,6 +10,7 @@ export default function Home() {
   const [selectedPricing, setSelectedPricing] = useState<any>(null)
   const [generatedQuote, setGeneratedQuote] = useState<any>(null)
   const [preloadedItems, setPreloadedItems] = useState<any[]>([])
+  const [preloadedClientName, setPreloadedClientName] = useState<string>('')
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -34,13 +35,19 @@ export default function Home() {
               </div>
             )}
 
-            <RequirementsUploader onRequirementsLoaded={setPreloadedItems} />
+            <RequirementsUploader
+              onRequirementsLoaded={(data: any) => {
+                setPreloadedItems(data.items || data)
+                if (data.clientName) setPreloadedClientName(data.clientName)
+              }}
+            />
           </div>
 
           <div className="lg:col-span-2 space-y-6">
             <QuoteGenerator
               pricingSource={selectedPricing}
               preloadedItems={preloadedItems}
+              preloadedClientName={preloadedClientName}
               onQuoteGenerated={setGeneratedQuote}
             />
             {generatedQuote && (
