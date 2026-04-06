@@ -1,15 +1,20 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import ItemSelector from './ItemSelector'
+import { gravityLabItems } from '@/data/gravityLabPricingData'
 
 interface QuoteItem {
   description: string
   quantity: number
   unitPrice: number
   notes?: string
+  hsn?: string
+  gst?: string
+  packing?: string
 }
 
-export default function QuoteGenerator({ files, onQuoteGenerated }: any) {
+export default function QuoteGenerator({ pricingSource, onQuoteGenerated }: any) {
   const [clientName, setClientName] = useState('')
   const [items, setItems] = useState<QuoteItem[]>([
     { description: '', quantity: 1, unitPrice: 0 },
@@ -44,7 +49,7 @@ export default function QuoteGenerator({ files, onQuoteGenerated }: any) {
         body: JSON.stringify({
           clientName,
           items,
-          pricingSourceId: files?.id || 'gravity-lab-chem',
+          pricingSourceId: pricingSource?.id || 'gravity-lab-chem',
         }),
       })
       const quote = await res.json()
@@ -76,6 +81,24 @@ export default function QuoteGenerator({ files, onQuoteGenerated }: any) {
 
       <div className="space-y-4 mb-6">
         <h3 className="font-semibold text-gray-900">Items</h3>
+
+        {/* Item Selector from Pricing Database */}
+        <ItemSelector
+          items={gravityLabItems}
+          onItemSelect={(item, quantity) => {
+            setItems([...items, {
+              description: `${item.name} (${item.packing})`,
+              quantity,
+              unitPrice: item.price,
+              notes: `HSN: ${item.hsn}`,
+              hsn: item.hsn,
+              gst: item.gst,
+              packing: item.packing
+            }])
+          }}
+        />
+
+        {/* Manual Item Entry */}
         {items.map((item, i) => (
           <div key={i} className="grid grid-cols-12 gap-3 items-end">
             <input
@@ -112,7 +135,7 @@ export default function QuoteGenerator({ files, onQuoteGenerated }: any) {
           onClick={addItem}
           className="text-blue-600 hover:text-blue-800 text-sm font-medium"
         >
-          + Add item
+          + Add item manually
         </button>
       </div>
 
