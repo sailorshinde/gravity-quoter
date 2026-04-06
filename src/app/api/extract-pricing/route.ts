@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { PDFParse } from 'pdf-parse'
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,10 +20,11 @@ export async function POST(request: NextRequest) {
     let fileContent = ''
 
     if (fileExt === 'pdf' || fileType === 'application/pdf') {
-      // For PDFs, read as text (basic extraction)
-      // In production, use a proper PDF library like pdf-parse
+      // Use pdf-parse library to properly extract text from PDF
       const buffer = await file.arrayBuffer()
-      fileContent = Buffer.from(buffer).toString('utf-8')
+      const pdfParser = new PDFParse({ data: new Uint8Array(buffer) })
+      const textResult = await pdfParser.getText()
+      fileContent = textResult.text
     } else if (fileExt === 'csv' || fileType === 'text/csv') {
       fileContent = await file.text()
     } else if (fileExt === 'xlsx' || fileExt === 'xls') {
