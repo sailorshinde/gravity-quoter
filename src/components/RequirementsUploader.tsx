@@ -112,17 +112,20 @@ export default function RequirementsUploader({ onRequirementsLoaded }: any) {
     }
   }
 
-  // Add all items (matched + unmatched) to quote
+  // Add all items (matched + unmatched) to quote, but only if they have a description
   const addToQuote = () => {
-    const quoteItems = requirements.map(r => ({
-      description: `${r.itemDescription} (${r.uom})`,
-      quantity: r.qty,
-      unitPrice: r.matched && r.matchedItem ? r.matchedItem.price : 0, // 0 for unmatched, user can edit
-      notes: `Brand: ${r.brand || 'Not specified'} | Spec: ${r.specification}`,
-      hsn: r.matched && r.matchedItem ? r.matchedItem.hsn : 'N/A',
-      gst: r.matched && r.matchedItem ? r.matchedItem.gst : '18%',
-      packing: r.matched && r.matchedItem ? r.matchedItem.packing : r.uom,
-    }))
+    const quoteItems = requirements
+      .filter(r => r.itemDescription && r.itemDescription.trim()) // Only include items with descriptions
+      .map(r => ({
+        description: `${r.itemDescription} (${r.uom})`,
+        quantity: r.qty,
+        unitPrice: r.matched && r.matchedItem ? r.matchedItem.price : 0, // 0 for unmatched, user can edit
+        notes: `Brand: ${r.brand || 'Not specified'} | Spec: ${r.specification}${!r.matched ? ' | ⚠️ UNMATCHED - needs price lookup' : ''}`,
+        hsn: r.matched && r.matchedItem ? r.matchedItem.hsn : 'N/A',
+        gst: r.matched && r.matchedItem ? r.matchedItem.gst : '18%',
+        packing: r.matched && r.matchedItem ? r.matchedItem.packing : r.uom,
+        isUnmatched: !r.matched, // Flag to highlight unmatched items in quote
+      }))
 
     onRequirementsLoaded({
       items: quoteItems,

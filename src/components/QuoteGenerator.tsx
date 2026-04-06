@@ -12,6 +12,7 @@ interface QuoteItem {
   hsn?: string
   gst?: string
   packing?: string
+  isUnmatched?: boolean
 }
 
 export default function QuoteGenerator({ pricingSource, preloadedItems = [], preloadedClientName = '', onQuoteGenerated }: any) {
@@ -125,14 +126,19 @@ export default function QuoteGenerator({ pricingSource, preloadedItems = [], pre
 
         {/* Manual Item Entry */}
         {items.map((item, i) => (
-          <div key={i} className={`grid grid-cols-12 gap-3 items-end p-2 rounded ${item.unitPrice === 0 && item.description ? 'bg-orange-50 border border-orange-200' : ''}`}>
-            <input
-              type="text"
-              value={item.description}
-              onChange={(e) => updateItem(i, 'description', e.target.value)}
-              placeholder="Item description"
-              className="col-span-4 px-3 py-2 border border-gray-300 rounded-lg text-sm"
-            />
+          <div key={i} className={`grid grid-cols-12 gap-3 items-end p-2 rounded ${item.isUnmatched ? 'bg-red-50 border border-red-200' : item.unitPrice === 0 && item.description ? 'bg-orange-50 border border-orange-200' : ''}`}>
+            <div className="col-span-4 relative">
+              <input
+                type="text"
+                value={item.description}
+                onChange={(e) => updateItem(i, 'description', e.target.value)}
+                placeholder="Item description"
+                className={`w-full px-3 py-2 border rounded-lg text-sm ${item.isUnmatched ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
+              />
+              {item.isUnmatched && (
+                <span className="absolute right-2 top-2 text-red-600 font-bold">⚠️</span>
+              )}
+            </div>
             <input
               type="number"
               value={item.quantity}
@@ -154,7 +160,12 @@ export default function QuoteGenerator({ pricingSource, preloadedItems = [], pre
             >
               ✕
             </button>
-            {item.unitPrice === 0 && item.description && (
+            {item.isUnmatched && (
+              <div className="col-span-12 text-xs text-red-600 font-semibold">
+                ⚠️ UNMATCHED ITEM - Please verify price and details before finalizing
+              </div>
+            )}
+            {!item.isUnmatched && item.unitPrice === 0 && item.description && (
               <div className="col-span-12 text-xs text-orange-600">
                 ⚠️ Price needed for this item
               </div>
