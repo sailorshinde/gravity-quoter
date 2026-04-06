@@ -1,4 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
+import Anthropic from '@anthropic-ai/sdk'
+
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY
+})
 
 export async function POST(request: NextRequest) {
   try {
@@ -128,8 +133,9 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Parse pricing data from content
-    const pricingData = extractPricingFromContent(fileContent, fileExt)
+    // Parse pricing data from content using AI
+    console.log('Sending content to Claude for AI-powered extraction')
+    const pricingData = await extractPricingWithAI(fileContent)
     console.log('Items extracted:', pricingData.length)
 
     if (pricingData.length === 0) {
@@ -154,6 +160,59 @@ export async function POST(request: NextRequest) {
       success: false,
       error: `Failed to extract pricing: ${error instanceof Error ? error.message : 'Unknown error'}`
     }, { status: 500 })
+  }
+}
+
+async function extractPricingWithAI(content: string): Promise<any[]> {
+  try {
+    const prompt = `Extract pricing data from the following PDF/document content.
+
+Return ONLY a valid JSON array of objects with this exact structure (no markdown, no code blocks, just raw JSON):
+[
+  {"name": "Product Name", "hsn": "HSN Code or N/A", "price": 100.50, "gst": 18},
+  ...
+]
+
+Requirements:
+- Extract item names, HSN codes, prices, and GST percentages
+- Prices must be valid numbers
+- GST should be a number (18 for 18%)
+- If HSN is not available, use "N/A"
+- Include all items found
+- Return empty array [] if no pricing data is found
+
+Content to parse:
+${content.substring(0, 8000)}`
+
+    const message = await anthropic.messages.create({
+      model: 'claude-opus-4-6',
+      max_tokens: 4096,
+      messages: [
+        {
+          role: 'user',
+          content: prompt
+        }
+      ]
+    })
+
+    const responseText = message.content[0].type === 'text' ? message.content[0].text : ''
+    console.log('Claude response:', responseText.substring(0, 200))
+
+    // Parse JSON from response
+    const jsonMatch = responseText.match(/\[[\s\S]*\]/)
+    if (!jsonMatch) {
+      console.error('No JSON array found in response')
+      return []
+    }
+
+    const items = JSON.parse(jsonMatch[0])
+    console.log('AI extraction successful, items:', items.length)
+    return items
+  } catch (err) {
+    console.error('AI extraction error:', err)
+    // Fallback to regex extraction if AI fails
+    console.log('Falling back to regex extraction')
+    return extractPricingFromContent(content)
   }
 }
 
