@@ -6,13 +6,27 @@ export default function ExportOptions({ quote }: any) {
   const [exporting, setExporting] = useState(false)
 
   const calculateTotals = () => {
-    const subtotal = quote.items.reduce(
-      (sum: number, item: any) => sum + item.quantity * item.unitPrice,
-      0
-    )
-    const tax = subtotal * 0.09
-    const total = subtotal + tax
-    return { subtotal, tax, total }
+    let subtotal = 0
+    let totalTax = 0
+
+    quote.items.forEach((item: any) => {
+      const unitPrice = item.unitPrice || 0
+      const quantity = item.quantity || 0
+      const discountPercent = item.discount || 0
+      const gstPercent = item.gst || 18
+
+      // Calculate line total
+      const lineAmount = unitPrice * quantity
+      const discountAmount = lineAmount * (discountPercent / 100)
+      const amountAfterDiscount = lineAmount - discountAmount
+      const gstAmount = amountAfterDiscount * (gstPercent / 100)
+
+      subtotal += amountAfterDiscount
+      totalTax += gstAmount
+    })
+
+    const total = subtotal + totalTax
+    return { subtotal, tax: totalTax, total }
   }
 
   const { subtotal, tax, total } = calculateTotals()
