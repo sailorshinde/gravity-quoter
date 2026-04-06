@@ -1,0 +1,94 @@
+{
+  "companies": [
+    {
+      "id": "gravity-lab-chem",
+      "name": "Gravity Lab Chemicals",
+      "description": "Accredited ISO 9001:2008 Certified Chemical Supplier",
+      "contact": "Tel: 9821198397/ 9892256737/ 8108474704/ 23010130",
+      "address": "Shop No. 2, Bldg. No. 36/38, 3rd Lane, S.P. Road, Mumbai Central, Mumbai - 8",
+      "lastUpdated": "2026-04-06",
+      "items": [
+        {
+          "id": 1,
+          "name": "Accacia Powder",
+          "hsnCode": "13012000",
+          "gst": "5%",
+          "packing": "500 gm",
+          "retailPrice": 300
+        },
+        {
+          "id": 2,
+          "name": "Acetamide",
+          "hsnCode": "29241900",
+          "gst": "18%",
+          "packing": "500 gm",
+          "retailPrice": 1200
+        },
+        {
+          "id": 3,
+          "name": "Acetanilide White",
+          "hsnCode": "29242910",
+          "gst": "18%",
+          "packing": "500 gm",
+          "retailPrice": 1050
+        },
+        {
+          "id": 4,
+          "name": "Aceto Acetanilide",
+          "hsnCode": "29242920",
+          "gst": "18%",
+          "packing": "500 gm",
+          "retailPrice": 1200
+        },
+        {
+          "id": 5,
+          "name": "Acetyl Salicylic Acid",
+          "hsnCode": "29182200",
+          "gst": "18%",
+          "packing": "500 gm",
+          "retailPrice": 1000
+        },
+        {
+          "id": 6,
+          "name": "Acrylamide",
+          "hsnCode": "29241900",
+          "gst": "18%",
+          "packing": "500 gm",
+          "retailPrice": 600
+        },
+        {
+          "id": 7,
+          "name": "Activated Allumina",
+          "hsnCode": "28182010",
+          "gst": "18%",
+          "packing": "500 gm",
+          "retailPrice": 300
+        },
+        {
+          "id": 8,
+          "name": "Activated Charcol Granular",
+          "hsnCode": "38021000",
+          "gst": "18%",
+          "packing": "500 gm",
+          "retailPrice": 500
+        },
+        {
+          "id": 9,
+          "name": "Activated Charcol Powder",
+          "hsnCode": "38021000",
+          "gst": "18%",
+          "packing": "500 gm",
+          "retailPrice": 400
+        },
+        {
+          "id": 10,
+          "name": "Adipic Acid",
+          "hsnCode": "29171200",
+          "gst": "18%",
+          "packing": "500 gm",
+          "retailPrice": 500
+        }
+      ]
+    }
+  ]
+}

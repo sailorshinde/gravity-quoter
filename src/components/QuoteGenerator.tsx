@@ -44,7 +44,7 @@ export default function QuoteGenerator({ files, onQuoteGenerated }: any) {
         body: JSON.stringify({
           clientName,
           items,
-          fileIds: files.map((f: any) => f.id),
+          pricingSourceId: files?.id || 'gravity-lab-chem',
         }),
       })
       const quote = await res.json()

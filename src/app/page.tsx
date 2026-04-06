@@ -1,12 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import UploadSection from '@/components/UploadSection'
+import PricingSelector from '@/components/UploadSection'
 import QuoteGenerator from '@/components/QuoteGenerator'
 import ExportOptions from '@/components/ExportOptions'
 
 export default function Home() {
-  const [uploadedFiles, setUploadedFiles] = useState<any[]>([])
+  const [selectedPricing, setSelectedPricing] = useState<any>(null)
   const [generatedQuote, setGeneratedQuote] = useState<any>(null)
 
   return (
@@ -21,23 +21,21 @@ export default function Home() {
       <main className="max-w-6xl mx-auto px-6 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-1 space-y-6">
-            <UploadSection onFilesUploaded={setUploadedFiles} />
-            <div className="bg-white rounded-lg border border-gray-200 p-6">
-              <h3 className="font-semibold text-gray-900 mb-4">Active pricing files</h3>
-              <ul className="space-y-2">
-                {uploadedFiles.map(f => (
-                  <li key={f.id} className="text-sm text-gray-700 flex items-center gap-2">
-                    <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                    {f.filename}
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <PricingSelector onPricingSelected={setSelectedPricing} />
+            {selectedPricing && (
+              <div className="bg-white rounded-lg border border-gray-200 p-6">
+                <h3 className="font-semibold text-gray-900 mb-2">Active Pricing</h3>
+                <p className="text-sm text-gray-700">
+                  <span className="w-2 h-2 bg-green-500 rounded-full inline-block mr-2"></span>
+                  {selectedPricing.name}
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="lg:col-span-2 space-y-6">
             <QuoteGenerator
-              files={uploadedFiles}
+              pricingSource={selectedPricing}
               onQuoteGenerated={setGeneratedQuote}
             />
             {generatedQuote && (
