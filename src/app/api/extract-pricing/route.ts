@@ -83,12 +83,16 @@ export async function POST(request: NextRequest) {
     const pricingData = extractPricingFromContent(fileContent, fileExt)
 
     if (pricingData.length === 0) {
+      // Return debug info to see what's being extracted
+      const firstLines = fileContent.split('\n').slice(0, 10).join('\n')
       return NextResponse.json({
         success: false,
-        error: 'No pricing data found in file. Expected format: Item Name | HSN Code | Unit Price | GST %',
+        error: 'No pricing data found in file.',
         debug: {
-          extractedText: fileContent.slice(0, 500), // First 500 chars of extracted text
-          totalChars: fileContent.length
+          firstLines: firstLines,
+          totalChars: fileContent.length,
+          hexSample: Buffer.from(fileContent.slice(0, 100)).toString('hex'),
+          message: 'Check the debug info above - this shows the raw extracted text'
         }
       }, { status: 400 })
     }
