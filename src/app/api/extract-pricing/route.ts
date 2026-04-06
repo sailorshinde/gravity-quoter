@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { PDFParse } from 'pdf-parse'
+import { exec } from 'child_process'
+import { promisify } from 'util'
+import { writeFileSync, unlinkSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
+
+const execPromise = promisify(exec)
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,24 +26,41 @@ export async function POST(request: NextRequest) {
     let fileContent = ''
 
     if (fileExt === 'pdf' || fileType === 'application/pdf') {
-      // Use PDFParse for robust Node.js text extraction
+      // Use pdftotext (Poppler) for better font encoding handling
       const buffer = await file.arrayBuffer()
-      try {
-        const pdfParser = new PDFParse({ data: new Uint8Array(buffer) })
-        const textResult = await pdfParser.getText()
-        fileContent = textResult.text
+      const tmpPdfPath = join(tmpdir(), `pdf-${Date.now()}.pdf`)
+      const tmpTextPath = join(tmpdir(), `text-${Date.now()}.txt`)
 
-        // Normalize whitespace and remove control characters that cause mojibake
+      try {
+        // Write PDF to temp file
+        writeFileSync(tmpPdfPath, Buffer.from(buffer))
+
+        // Extract text using pdftotext
+        await execPromise(`pdftotext -enc UTF-8 "${tmpPdfPath}" "${tmpTextPath}"`)
+
+        // Read extracted text
+        const fs = await import('fs')
+        fileContent = fs.readFileSync(tmpTextPath, 'utf-8')
+
+        // Normalize whitespace and remove control characters
         fileContent = fileContent
-          .replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F\x80-\x9F]/g, '') // Remove control and extended ASCII
+          .replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '') // Remove control characters
           .replace(/\s+/g, ' ') // Collapse multiple whitespaces
           .trim()
+
+        // Clean up temp files
+        unlinkSync(tmpPdfPath)
+        unlinkSync(tmpTextPath)
       } catch (pdfError) {
-        console.error('PDF parse error:', pdfError)
+        console.error('PDF extraction error:', pdfError)
+        // Clean up temp files if they exist
+        try { unlinkSync(tmpPdfPath) } catch (e) {}
+        try { unlinkSync(tmpTextPath) } catch (e) {}
+
         return NextResponse.json({
           success: false,
-          error: 'Failed to parse PDF. Please check if the file is a valid PDF.',
-          debug: { errorType: (pdfError as any).name }
+          error: 'Failed to extract PDF. Please check if the file is a valid PDF.',
+          debug: { errorType: (pdfError as any).message }
         }, { status: 400 })
       }
     } else if (fileExt === 'csv' || fileType === 'text/csv') {
