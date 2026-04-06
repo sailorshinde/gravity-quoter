@@ -53,22 +53,64 @@ export async function POST(request: NextRequest) {
         // Import pdf-parse dynamically
         const { PDFParse } = await import('pdf-parse')
         const parser = new PDFParse({ data: Buffer.from(buffer) })
-        const data = await parser.getText()
-        fileContent = data.text
 
-        console.log('PDF extracted, content length:', fileContent.length)
+        let extractedText = ''
+        let isCorrupted = false
 
-        if (!fileContent || fileContent.trim().length === 0) {
+        try {
+          // Try primary extraction method
+          const data = await parser.getText()
+          extractedText = data.text || data
+          console.log('PDF text extracted, length:', extractedText.length)
+        } catch (primaryErr) {
+          console.warn('Primary extraction failed, trying alternative:', primaryErr)
+          try {
+            // Try alternative extraction method for different PDF types
+            const data = await parser.getDocumentLines?.() || []
+            extractedText = Array.isArray(data) ? data.join('\n') : String(data)
+            console.log('Alternative extraction succeeded, length:', extractedText.length)
+          } catch (altErr) {
+            console.error('Alternative extraction also failed:', altErr)
+            throw primaryErr
+          }
+        }
+
+        // Validate extracted text quality
+        if (!extractedText || extractedText.trim().length === 0) {
           return NextResponse.json({
             success: false,
             error: 'PDF appears to be empty or contains only images. Please use a PDF with extractable text.'
           }, { status: 400 })
         }
+
+        // Check if text looks corrupted (high ratio of special/control characters)
+        const specialCharCount = (extractedText.match(/[\u0080-\u009F]/g) || []).length
+        const visibleCharCount = extractedText.replace(/[\s\u0080-\u009F\x00-\x1F]/g, '').length
+
+        if (visibleCharCount > 0) {
+          const corruptionRatio = specialCharCount / (specialCharCount + visibleCharCount)
+          console.log('Text quality check:', { specialCharCount, visibleCharCount, corruptionRatio: (corruptionRatio * 100).toFixed(2) + '%' })
+
+          if (corruptionRatio > 0.3) {
+            isCorrupted = true
+            console.warn('Extracted text appears corrupted with ' + (corruptionRatio * 100).toFixed(1) + '% special characters')
+          }
+        }
+
+        if (isCorrupted) {
+          return NextResponse.json({
+            success: false,
+            error: 'The PDF text appears to be corrupted or encoded in an unsupported format. This might be a scanned document. Please use a PDF with standard text encoding.'
+          }, { status: 400 })
+        }
+
+        fileContent = extractedText
+        console.log('PDF processed successfully')
       } catch (err) {
         console.error('PDF parsing error:', err)
         return NextResponse.json({
           success: false,
-          error: `Could not extract text from PDF: ${err instanceof Error ? err.message : 'Unknown error'}`
+          error: `Could not extract text from PDF: ${err instanceof Error ? err.message : 'Unknown error'}. Try converting the PDF to a different format or using an online tool like CloudConvert.`
         }, { status: 400 })
       }
     } else if (fileExt === 'csv' || fileType === 'text/csv' || fileType === 'text/plain') {
