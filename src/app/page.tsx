@@ -2,12 +2,14 @@
 
 import { useState } from 'react'
 import PricingSelector from '@/components/UploadSection'
+import RequirementsUploader from '@/components/RequirementsUploader'
 import QuoteGenerator from '@/components/QuoteGenerator'
 import ExportOptions from '@/components/ExportOptions'
 
 export default function Home() {
   const [selectedPricing, setSelectedPricing] = useState<any>(null)
   const [generatedQuote, setGeneratedQuote] = useState<any>(null)
+  const [preloadedItems, setPreloadedItems] = useState<any[]>([])
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -31,11 +33,14 @@ export default function Home() {
                 </p>
               </div>
             )}
+
+            <RequirementsUploader onRequirementsLoaded={setPreloadedItems} />
           </div>
 
           <div className="lg:col-span-2 space-y-6">
             <QuoteGenerator
               pricingSource={selectedPricing}
+              preloadedItems={preloadedItems}
               onQuoteGenerated={setGeneratedQuote}
             />
             {generatedQuote && (

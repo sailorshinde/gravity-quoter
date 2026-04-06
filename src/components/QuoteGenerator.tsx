@@ -14,12 +14,19 @@ interface QuoteItem {
   packing?: string
 }
 
-export default function QuoteGenerator({ pricingSource, onQuoteGenerated }: any) {
+export default function QuoteGenerator({ pricingSource, preloadedItems = [], onQuoteGenerated }: any) {
   const [clientName, setClientName] = useState('')
   const [items, setItems] = useState<QuoteItem[]>([
     { description: '', quantity: 1, unitPrice: 0 },
   ])
   const [loading, setLoading] = useState(false)
+
+  // Update items when preloadedItems changes
+  useEffect(() => {
+    if (preloadedItems.length > 0) {
+      setItems(preloadedItems)
+    }
+  }, [preloadedItems])
 
   const addItem = () => {
     setItems([...items, { description: '', quantity: 1, unitPrice: 0 }])
