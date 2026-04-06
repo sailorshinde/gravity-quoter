@@ -9,9 +9,9 @@ interface QuoteItem {
   quantity: number
   unitPrice: number
   discount?: number // Discount percentage
+  gst?: number // GST percentage
+  hsn?: string // HSN code
   notes?: string
-  hsn?: string
-  gst?: string
   packing?: string
   isUnmatched?: boolean
 }
@@ -113,6 +113,7 @@ export default function QuoteGenerator({ pricingSource, preloadedItems = [], pre
         <ItemSelector
           items={gravityLabItems}
           onItemSelect={(item, quantity) => {
+            const gstNumber = parseFloat(item.gst.replace('%', ''))
             setItems([...items, {
               description: `${item.name} (${item.packing})`,
               quantity,
@@ -120,32 +121,50 @@ export default function QuoteGenerator({ pricingSource, preloadedItems = [], pre
               discount: 0,
               notes: `HSN: ${item.hsn}`,
               hsn: item.hsn,
-              gst: item.gst,
+              gst: gstNumber,
               packing: item.packing
             }])
           }}
         />
 
+        {/* Manual Item Entry - Headers */}
+        <div className="grid grid-cols-12 gap-2 mb-2 text-xs font-bold text-gray-700 px-2">
+          <div className="col-span-4">Item</div>
+          <div className="col-span-1">HSN</div>
+          <div className="col-span-1">Qty</div>
+          <div className="col-span-2">Price</div>
+          <div className="col-span-1">GST%</div>
+          <div className="col-span-1">Disc%</div>
+          <div className="col-span-1"></div>
+        </div>
+
         {/* Manual Item Entry */}
         {items.map((item, i) => (
-          <div key={i} className={`grid grid-cols-12 gap-3 items-end p-2 rounded ${item.isUnmatched ? 'bg-red-50 border border-red-200' : item.unitPrice === 0 && item.description ? 'bg-orange-50 border border-orange-200' : ''}`}>
+          <div key={i} className={`grid grid-cols-12 gap-2 items-end p-2 rounded ${item.isUnmatched ? 'bg-red-50 border border-red-200' : item.unitPrice === 0 && item.description ? 'bg-orange-50 border border-orange-200' : ''}`}>
             <div className="col-span-4 relative">
               <input
                 type="text"
                 value={item.description}
                 onChange={(e) => updateItem(i, 'description', e.target.value)}
                 placeholder="Item description"
-                className={`w-full px-3 py-2 border rounded-lg text-sm ${item.isUnmatched ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
+                className={`w-full px-2 py-2 border rounded text-sm ${item.isUnmatched ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
               />
               {item.isUnmatched && (
                 <span className="absolute right-2 top-2 text-red-600 font-bold">⚠️</span>
               )}
             </div>
             <input
+              type="text"
+              value={item.hsn || ''}
+              onChange={(e) => updateItem(i, 'hsn', e.target.value)}
+              placeholder="HSN"
+              className="col-span-1 px-2 py-2 border border-gray-300 rounded text-sm text-center"
+            />
+            <input
               type="number"
               value={item.quantity}
               onChange={(e) => updateItem(i, 'quantity', +e.target.value)}
-              className="col-span-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              className="col-span-1 px-2 py-2 border border-gray-300 rounded text-sm text-center"
               placeholder="Qty"
             />
             <input
@@ -153,8 +172,19 @@ export default function QuoteGenerator({ pricingSource, preloadedItems = [], pre
               step="0.01"
               value={item.unitPrice}
               onChange={(e) => updateItem(i, 'unitPrice', +e.target.value)}
-              className={`col-span-2 px-3 py-2 border rounded-lg text-sm ${item.unitPrice === 0 && item.description ? 'border-orange-300 bg-orange-50' : 'border-gray-300'}`}
+              className={`col-span-2 px-2 py-2 border rounded text-sm text-center ${item.unitPrice === 0 && item.description ? 'border-orange-300 bg-orange-50' : 'border-gray-300'}`}
               placeholder="Price"
+            />
+            <input
+              type="number"
+              step="0.1"
+              min="0"
+              max="100"
+              value={item.gst || 18}
+              onChange={(e) => updateItem(i, 'gst', +e.target.value)}
+              className="col-span-1 px-2 py-2 border border-green-300 rounded text-sm text-center bg-green-50 font-semibold"
+              placeholder="GST%"
+              title="GST percentage"
             />
             <input
               type="number"
@@ -163,13 +193,13 @@ export default function QuoteGenerator({ pricingSource, preloadedItems = [], pre
               max="100"
               value={item.discount || 0}
               onChange={(e) => updateItem(i, 'discount', +e.target.value)}
-              className="col-span-1 px-3 py-2 border border-blue-300 rounded-lg text-sm bg-blue-50 font-semibold"
+              className="col-span-1 px-2 py-2 border border-blue-300 rounded text-sm text-center bg-blue-50 font-semibold"
               placeholder="Disc%"
-              title="Discount % (e.g., 10 for 10% off)"
+              title="Discount %"
             />
             <button
               onClick={() => removeItem(i)}
-              className="col-span-1 text-red-600 hover:text-red-800 text-sm font-medium"
+              className="col-span-1 text-red-600 hover:text-red-800 text-sm font-medium text-center"
             >
               ✕
             </button>
