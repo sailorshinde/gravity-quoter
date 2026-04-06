@@ -47,7 +47,11 @@ export async function POST(request: NextRequest) {
     if (pricingData.length === 0) {
       return NextResponse.json({
         success: false,
-        error: 'No pricing data found in file. Expected format: Item Name | HSN Code | Unit Price | GST %'
+        error: 'No pricing data found in file. Expected format: Item Name | HSN Code | Unit Price | GST %',
+        debug: {
+          extractedText: fileContent.slice(0, 500), // First 500 chars of extracted text
+          totalChars: fileContent.length
+        }
       }, { status: 400 })
     }
 
@@ -72,38 +76,39 @@ export async function POST(request: NextRequest) {
 function extractPricingFromContent(content: string, fileType?: string): any[] {
   const lines = content.split('\n')
   const items: any[] = []
-  let headerRow = 0
 
   lines.forEach((line, index) => {
-    // Skip empty lines and look for header row
-    if (!line.trim()) return
+    // Skip empty lines and header rows
+    if (!line.trim() || index === 0) return
+    if (line.toLowerCase().includes('item name') && line.toLowerCase().includes('hsn')) return
 
     // Try pipe-separated format first
     let match = line.match(/([^|]+)\|([^|]+)\|([^|]+)\|([^|]+)/)
     if (match) {
-      const item = {
-        name: match[1].trim(),
-        hsn: match[2].trim(),
-        price: parseFloat(match[3].trim()),
-        gst: parseFloat(match[4].trim()) || 18
-      }
-      if (item.price > 0 || item.name.toLowerCase() !== 'item name') {
-        items.push(item)
+      const price = parseFloat(match[3].trim())
+      if (price > 0) {
+        items.push({
+          name: match[1].trim(),
+          hsn: match[2].trim(),
+          price: price,
+          gst: parseFloat(match[4].trim()) || 18
+        })
       }
       return
     }
 
-    // Try CSV format (comma-separated)
-    const csvMatch = line.match(/^"?([^",]+)"?,\s*"?([^",]+)"?,\s*"?([\d.]+)"?,\s*"?([\d.]+)"?/)
-    if (csvMatch && lines.indexOf(line) > 0) { // Skip header line
-      const item = {
-        name: csvMatch[1].trim(),
-        hsn: csvMatch[2].trim(),
-        price: parseFloat(csvMatch[3].trim()),
-        gst: parseFloat(csvMatch[4].trim()) || 18
-      }
-      if (item.price > 0) {
-        items.push(item)
+    // Try CSV format (comma-separated with flexible regex)
+    // Match: "quoted text",number or text,number,number pattern
+    const csvMatch = line.match(/^"?([^"]+?)"?,\s*"?([^"]+?)"?,\s*(\d+(?:\.\d+)?),\s*(\d+(?:\.\d+)?)/)
+    if (csvMatch) {
+      const price = parseFloat(csvMatch[3])
+      if (price > 0) {
+        items.push({
+          name: csvMatch[1].trim(),
+          hsn: csvMatch[2].trim(),
+          price: price,
+          gst: parseFloat(csvMatch[4]) || 18
+        })
       }
     }
   })
