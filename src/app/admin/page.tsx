@@ -42,16 +42,13 @@ export default function AdminPage() {
 
     setUploading(true)
     try {
-      const content = await file.text()
+      const formData = new FormData()
+      formData.append('file', file)
 
       // Call API to extract pricing from PDF/file
       const res = await fetch('/api/extract-pricing', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fileContent: content,
-          fileName: file.name
-        })
+        body: formData
       })
 
       const result = await res.json()
@@ -64,6 +61,8 @@ export default function AdminPage() {
           itemCount: result.itemCount
         })
         setShowCSVPreview(true)
+      } else {
+        alert(result.error || 'Failed to extract pricing')
       }
     } catch (err) {
       console.error('Upload failed:', err)
@@ -95,6 +94,9 @@ export default function AdminPage() {
   const handleDiscardDraft = () => {
     setDraftPricing(null)
     setShowCSVPreview(false)
+    // Reset file input
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    if (input) input.value = ''
   }
 
   const handleToggle = (id: string) => {
