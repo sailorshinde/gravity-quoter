@@ -47,27 +47,29 @@ export default function RequirementsUploader({ onRequirementsLoaded }: any) {
 
   // Match requirement items with pricing database
   const matchRequirements = (items: RequirementItem[]): RequirementItem[] => {
-    return items.map(req => {
-      let bestMatch = null
-      let bestScore = 0
+    return items
+      .filter(req => req.itemDescription && req.itemDescription.trim()) // Filter empty items first
+      .map(req => {
+        let bestMatch = null
+        let bestScore = 0
 
-      // Try to match with each item in pricing database
-      gravityLabItems.forEach(pricingItem => {
-        const score = calculateSimilarity(req.itemDescription, pricingItem.name)
+        // Try to match with each item in pricing database
+        gravityLabItems.forEach(pricingItem => {
+          const score = calculateSimilarity(req.itemDescription, pricingItem.name)
 
-        if (score > bestScore) {
-          bestScore = score
-          bestMatch = pricingItem
+          if (score > bestScore) {
+            bestScore = score
+            bestMatch = pricingItem
+          }
+        })
+
+        return {
+          ...req,
+          matched: bestScore >= 60, // 60% match threshold
+          matchedItem: bestMatch,
+          matchScore: bestScore,
         }
       })
-
-      return {
-        ...req,
-        matched: bestScore >= 60, // 60% match threshold
-        matchedItem: bestMatch,
-        matchScore: bestScore,
-      }
-    })
   }
 
   // Parse Excel file

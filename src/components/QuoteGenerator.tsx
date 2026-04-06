@@ -8,6 +8,7 @@ interface QuoteItem {
   description: string
   quantity: number
   unitPrice: number
+  discount?: number // Discount percentage
   notes?: string
   hsn?: string
   gst?: string
@@ -116,6 +117,7 @@ export default function QuoteGenerator({ pricingSource, preloadedItems = [], pre
               description: `${item.name} (${item.packing})`,
               quantity,
               unitPrice: item.price,
+              discount: 0,
               notes: `HSN: ${item.hsn}`,
               hsn: item.hsn,
               gst: item.gst,
@@ -143,7 +145,7 @@ export default function QuoteGenerator({ pricingSource, preloadedItems = [], pre
               type="number"
               value={item.quantity}
               onChange={(e) => updateItem(i, 'quantity', +e.target.value)}
-              className="col-span-2 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              className="col-span-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
               placeholder="Qty"
             />
             <input
@@ -151,8 +153,19 @@ export default function QuoteGenerator({ pricingSource, preloadedItems = [], pre
               step="0.01"
               value={item.unitPrice}
               onChange={(e) => updateItem(i, 'unitPrice', +e.target.value)}
-              className={`col-span-3 px-3 py-2 border rounded-lg text-sm ${item.unitPrice === 0 && item.description ? 'border-orange-300 bg-orange-50' : 'border-gray-300'}`}
+              className={`col-span-2 px-3 py-2 border rounded-lg text-sm ${item.unitPrice === 0 && item.description ? 'border-orange-300 bg-orange-50' : 'border-gray-300'}`}
               placeholder="Price"
+            />
+            <input
+              type="number"
+              step="0.1"
+              min="0"
+              max="100"
+              value={item.discount || 0}
+              onChange={(e) => updateItem(i, 'discount', +e.target.value)}
+              className="col-span-1 px-3 py-2 border border-blue-300 rounded-lg text-sm bg-blue-50 font-semibold"
+              placeholder="Disc%"
+              title="Discount % (e.g., 10 for 10% off)"
             />
             <button
               onClick={() => removeItem(i)}
