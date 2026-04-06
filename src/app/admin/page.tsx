@@ -40,6 +40,13 @@ export default function AdminPage() {
     const file = e.target.files?.[0]
     if (!file) return
 
+    // Check file size (Vercel has 4.5MB limit)
+    const maxSize = 4.5 * 1024 * 1024 // 4.5MB
+    if (file.size > maxSize) {
+      alert(`File size (${(file.size / 1024 / 1024).toFixed(2)}MB) exceeds 4.5MB limit.\n\nPlease compress your PDF using:\n• ILovePDF.com\n• Smallpdf.com\n• Adobe PDF Compress\n\nThen try again.`)
+      return
+    }
+
     setUploading(true)
     try {
       const formData = new FormData()

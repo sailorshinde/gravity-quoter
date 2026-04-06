@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: '50mb',
-    },
-  },
-}
-
 export async function POST(request: NextRequest) {
   try {
     console.log('Extract-pricing API called at', new Date().toISOString())
+
+    // Check content length before parsing
+    const contentLength = request.headers.get('content-length')
+    console.log('Request content-length:', contentLength)
+
+    if (contentLength && parseInt(contentLength) > 4500000) {
+      return NextResponse.json({
+        success: false,
+        error: 'File size exceeds 4.5MB limit. Please compress your PDF and try again. Use online tools like ILovePDF.com to reduce file size.'
+      }, { status: 413 })
+    }
 
     let formData
     try {
