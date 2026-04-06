@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import * as pdf from 'pdf-parse'
 
 export async function POST(request: NextRequest) {
   try {
+    console.log('Extract-pricing API called')
+
     const formData = await request.formData()
     const file = formData.get('file') as File
+
+    console.log('File received:', file?.name, 'Type:', file?.type, 'Size:', file?.size)
 
     if (!file) {
       return NextResponse.json({
@@ -17,13 +20,22 @@ export async function POST(request: NextRequest) {
     const fileType = file.type
     const fileExt = fileName.split('.').pop()?.toLowerCase()
 
+    console.log('Processing file:', { fileName, fileType, fileExt })
+
     let fileContent = ''
 
     if (fileExt === 'pdf' || fileType === 'application/pdf') {
       try {
+        console.log('Attempting PDF extraction')
         const buffer = await file.arrayBuffer()
-        const data = await pdf(Buffer.from(buffer))
+
+        // Import pdf-parse dynamically
+        const { PDFParse } = await import('pdf-parse')
+        const parser = new PDFParse({ data: Buffer.from(buffer) })
+        const data = await parser.getText()
         fileContent = data.text
+
+        console.log('PDF extracted, content length:', fileContent.length)
 
         if (!fileContent || fileContent.trim().length === 0) {
           return NextResponse.json({
@@ -35,11 +47,12 @@ export async function POST(request: NextRequest) {
         console.error('PDF parsing error:', err)
         return NextResponse.json({
           success: false,
-          error: 'Could not extract text from PDF. Ensure it contains text (not just scanned images).'
+          error: `Could not extract text from PDF: ${err instanceof Error ? err.message : 'Unknown error'}`
         }, { status: 400 })
       }
     } else if (fileExt === 'csv' || fileType === 'text/csv' || fileType === 'text/plain') {
       fileContent = await file.text()
+      console.log('CSV extracted, content length:', fileContent.length)
     } else if (fileExt === 'xlsx' || fileExt === 'xls') {
       return NextResponse.json({
         success: false,
@@ -54,6 +67,7 @@ export async function POST(request: NextRequest) {
 
     // Parse pricing data from content
     const pricingData = extractPricingFromContent(fileContent, fileExt)
+    console.log('Items extracted:', pricingData.length)
 
     if (pricingData.length === 0) {
       return NextResponse.json({
