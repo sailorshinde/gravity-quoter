@@ -118,7 +118,6 @@ export async function POST(request: NextRequest) {
 function extractPricingFromContent(content: string, fileType?: string): any[] {
   const lines = content.split('\n')
   const items: any[] = []
-  let skipUntilData = true
 
   lines.forEach((line) => {
     const trimmed = line.trim()
@@ -126,13 +125,14 @@ function extractPricingFromContent(content: string, fileType?: string): any[] {
     // Skip empty lines and headers
     if (!trimmed || trimmed.toLowerCase().includes('s.no') || trimmed.toLowerCase().includes('products')) return
     if (trimmed.toLowerCase().includes('item name') && trimmed.toLowerCase().includes('hsn')) return
-    if (trimmed.toLowerCase().includes('pk') && trimmed.toLowerCase().includes('price')) return
+    if (trimmed.toLowerCase().includes('contact') || trimmed.toLowerCase().includes('email')) return
+    if (trimmed.match(/^\d{4,}\s*$/)) return // Skip lines that are just phone/numbers
 
     // Try pipe-separated format first (for CSV-style input)
     let match = line.match(/([^|]+)\|([^|]+)\|([^|]+)\|([^|]+)/)
     if (match) {
       const price = parseFloat(match[3].trim())
-      if (price > 0) {
+      if (price > 0 && price < 100000) { // Reasonable price range
         items.push({
           name: match[1].trim(),
           hsn: match[2].trim(),
@@ -144,15 +144,16 @@ function extractPricingFromContent(content: string, fileType?: string): any[] {
     }
 
     // Try space/tab-separated table format
-    // Pattern: NUMBER PRODUCTNAME ... ML/Ml PRICE HSN GST%
-    // Look for: starts with number, ends with % or number
-    const spaceMatch = trimmed.match(/^(\d+)\s+(.+?)\s+(\d+\s+(?:ML|Ml|ml|LTR|Ltr|ltr|Kg|kg))\s+(\d+(?:\.\d+)?)\s+(\d+)\s+(\d+%?)/)
+    // Better pattern: NUMBER PRODUCTNAME ... SIZE PRICE HSN(5+ digits) GST%
+    const spaceMatch = trimmed.match(/^(\d+)\s+(.+?)\s+(\d+\s+(?:ML|Ml|ml|LTR|Ltr|ltr|Kg|kg|g|G|l|L))\s+(\d+(?:\.\d+)?)\s+(\d{5,})\s+(\d+%?)/)
     if (spaceMatch) {
       const price = parseFloat(spaceMatch[4])
-      if (price > 0) {
+      const hsnCode = spaceMatch[5].trim()
+      // Validate: reasonable price, HSN is 5+ digits, product name is not just numbers
+      if (price > 0 && price < 100000 && hsnCode.match(/^\d{5,}$/) && !spaceMatch[2].match(/^\d+$/)) {
         items.push({
           name: spaceMatch[2].trim(),
-          hsn: spaceMatch[5].trim(),
+          hsn: hsnCode,
           price: price,
           gst: spaceMatch[6].replace('%', '')
         })
@@ -161,15 +162,18 @@ function extractPricingFromContent(content: string, fileType?: string): any[] {
     }
 
     // Fallback: Try CSV format (comma-separated)
-    const csvMatch = trimmed.match(/^"?([^"]+?)"?,\s*"?([^"]+?)"?,\s*(\d+(?:\.\d+)?),\s*(\d+(?:\.\d+)?)/)
+    // Only match if HSN code is 5+ digits (more reliable identifier)
+    const csvMatch = trimmed.match(/^"?([^",]+)"?,\s*"?([^",]+)"?,\s*(\d+(?:\.\d+)?),\s*(\d+)/)
     if (csvMatch) {
       const price = parseFloat(csvMatch[3])
-      if (price > 0) {
+      const gst = parseInt(csvMatch[4])
+      // Reasonable ranges: price < 100000, GST is 0-99
+      if (price > 0 && price < 100000 && gst < 100 && !csvMatch[1].match(/^contact|^email|^\d{10}/i)) {
         items.push({
           name: csvMatch[1].trim(),
           hsn: csvMatch[2].trim(),
           price: price,
-          gst: parseFloat(csvMatch[4]) || 18
+          gst: gst
         })
       }
     }
