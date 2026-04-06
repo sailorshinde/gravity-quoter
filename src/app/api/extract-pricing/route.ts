@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import * as pdf from 'pdf-parse'
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,18 +20,22 @@ export async function POST(request: NextRequest) {
     let fileContent = ''
 
     if (fileExt === 'pdf' || fileType === 'application/pdf') {
-      // For PDFs, read as text (basic extraction)
-      // PDFs are complex - for now we'll extract what text we can
       try {
         const buffer = await file.arrayBuffer()
-        const text = Buffer.from(buffer).toString('utf-8')
-        // Filter out non-text binary data
-        fileContent = text.replace(/[^\x20-\x7E\n\r|,]/g, ' ')
+        const data = await pdf(Buffer.from(buffer))
+        fileContent = data.text
+
+        if (!fileContent || fileContent.trim().length === 0) {
+          return NextResponse.json({
+            success: false,
+            error: 'PDF appears to be empty or contains only images. Please use a PDF with extractable text.'
+          }, { status: 400 })
+        }
       } catch (err) {
         console.error('PDF parsing error:', err)
         return NextResponse.json({
           success: false,
-          error: 'Could not extract text from PDF. Try converting to CSV first or ensure PDF contains text (not scanned image).'
+          error: 'Could not extract text from PDF. Ensure it contains text (not just scanned images).'
         }, { status: 400 })
       }
     } else if (fileExt === 'csv' || fileType === 'text/csv' || fileType === 'text/plain') {
@@ -43,7 +48,7 @@ export async function POST(request: NextRequest) {
     } else {
       return NextResponse.json({
         success: false,
-        error: 'Unsupported file format. Please upload CSV or PDF file.'
+        error: 'Unsupported file format. Please upload PDF or CSV.'
       }, { status: 400 })
     }
 
@@ -78,10 +83,8 @@ export async function POST(request: NextRequest) {
 function extractPricingFromContent(content: string, fileType?: string): any[] {
   const lines = content.split('\n')
   const items: any[] = []
-  let headerRow = 0
 
-  lines.forEach((line, index) => {
-    // Skip empty lines and look for header row
+  lines.forEach((line) => {
     if (!line.trim()) return
 
     // Try pipe-separated format first
@@ -93,7 +96,7 @@ function extractPricingFromContent(content: string, fileType?: string): any[] {
         price: parseFloat(match[3].trim()),
         gst: parseFloat(match[4].trim()) || 18
       }
-      if (item.price > 0 || item.name.toLowerCase() !== 'item name') {
+      if (item.price > 0 && item.name.toLowerCase() !== 'item name') {
         items.push(item)
       }
       return
@@ -101,15 +104,15 @@ function extractPricingFromContent(content: string, fileType?: string): any[] {
 
     // Try CSV format (comma-separated)
     const csvMatch = line.match(/^"?([^",]+)"?,\s*"?([^",]+)"?,\s*"?([\d.]+)"?,\s*"?([\d.]+)"?/)
-    if (csvMatch && lines.indexOf(line) > 0) { // Skip header line
-      const item = {
-        name: csvMatch[1].trim(),
-        hsn: csvMatch[2].trim(),
-        price: parseFloat(csvMatch[3].trim()),
-        gst: parseFloat(csvMatch[4].trim()) || 18
-      }
-      if (item.price > 0) {
-        items.push(item)
+    if (csvMatch) {
+      const name = csvMatch[1].trim()
+      const hsn = csvMatch[2].trim()
+      const price = parseFloat(csvMatch[3].trim())
+      const gst = parseFloat(csvMatch[4].trim()) || 18
+
+      // Skip header rows and invalid entries
+      if (price > 0 && name.toLowerCase() !== 'item name' && name.toLowerCase() !== 'description') {
+        items.push({ name, hsn, price, gst })
       }
     }
   })
