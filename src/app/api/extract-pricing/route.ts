@@ -116,70 +116,98 @@ export async function POST(request: NextRequest) {
 }
 
 function extractPricingFromContent(content: string, fileType?: string): any[] {
-  const lines = content.split('\n')
+  // Find where the actual pricing table starts
+  const tableStartMatch = content.match(/S\.NO\s+PRODUCTS\s+PKG\s+PRICE\s+HSN\s+CODE\s+GST/i)
+  if (!tableStartMatch) {
+    return [] // No pricing table found
+  }
+
+  // Get content after the header
+  const tableStart = content.indexOf(tableStartMatch[0]) + tableStartMatch[0].length
+  const tableContent = content.substring(tableStart)
+  const lines = tableContent.split('\n')
   const items: any[] = []
+
+  // Join multi-line entries and process
+  let currentLine = ''
 
   lines.forEach((line) => {
     const trimmed = line.trim()
 
-    // Skip empty lines and headers
-    if (!trimmed || trimmed.toLowerCase().includes('s.no') || trimmed.toLowerCase().includes('products')) return
-    if (trimmed.toLowerCase().includes('item name') && trimmed.toLowerCase().includes('hsn')) return
-    if (trimmed.toLowerCase().includes('contact') || trimmed.toLowerCase().includes('email')) return
-    if (trimmed.match(/^\d{4,}\s*$/)) return // Skip lines that are just phone/numbers
-
-    // Try pipe-separated format first (for CSV-style input)
-    let match = line.match(/([^|]+)\|([^|]+)\|([^|]+)\|([^|]+)/)
-    if (match) {
-      const price = parseFloat(match[3].trim())
-      if (price > 0 && price < 100000) { // Reasonable price range
-        items.push({
-          name: match[1].trim(),
-          hsn: match[2].trim(),
-          price: price,
-          gst: parseFloat(match[4].trim()) || 18
-        })
-      }
+    // Skip empty lines, page breaks, and headers
+    if (!trimmed || trimmed.match(/^(ANNEXURE|W\.E\.F|DETAILS|Pg\s*–|BIOLOGICAL|ACIDS|BUFFER|SOLUTIONS|INDICATORS|REAGENTS|SOLVENTS)/) || trimmed.match(/^\d+\s*$/) ) {
+      currentLine = ''
       return
     }
 
-    // Try space/tab-separated table format
-    // Better pattern: NUMBER PRODUCTNAME ... SIZE PRICE HSN(5+ digits) GST%
-    const spaceMatch = trimmed.match(/^(\d+)\s+(.+?)\s+(\d+\s+(?:ML|Ml|ml|LTR|Ltr|ltr|Kg|kg|g|G|l|L))\s+(\d+(?:\.\d+)?)\s+(\d{5,})\s+(\d+%?)/)
-    if (spaceMatch) {
-      const price = parseFloat(spaceMatch[4])
-      const hsnCode = spaceMatch[5].trim()
-      // Validate: reasonable price, HSN is 5+ digits, product name is not just numbers
-      if (price > 0 && price < 100000 && hsnCode.match(/^\d{5,}$/) && !spaceMatch[2].match(/^\d+$/)) {
-        items.push({
-          name: spaceMatch[2].trim(),
-          hsn: hsnCode,
-          price: price,
-          gst: spaceMatch[6].replace('%', '')
-        })
+    // Check if this line starts with a number (new pricing entry)
+    if (trimmed.match(/^\d+\s+[A-Z]/)) {
+      // Process previous line if exists
+      if (currentLine) {
+        extractItem(currentLine, items)
       }
-      return
-    }
-
-    // Fallback: Try CSV format (comma-separated)
-    // Only match if HSN code is 5+ digits (more reliable identifier)
-    const csvMatch = trimmed.match(/^"?([^",]+)"?,\s*"?([^",]+)"?,\s*(\d+(?:\.\d+)?),\s*(\d+)/)
-    if (csvMatch) {
-      const price = parseFloat(csvMatch[3])
-      const gst = parseInt(csvMatch[4])
-      // Reasonable ranges: price < 100000, GST is 0-99
-      if (price > 0 && price < 100000 && gst < 100 && !csvMatch[1].match(/^contact|^email|^\d{10}/i)) {
-        items.push({
-          name: csvMatch[1].trim(),
-          hsn: csvMatch[2].trim(),
-          price: price,
-          gst: gst
-        })
+      currentLine = trimmed
+    } else {
+      // Continue the previous line (multi-line product name)
+      if (currentLine) {
+        currentLine += ' ' + trimmed
       }
     }
   })
 
+  // Process last line
+  if (currentLine) {
+    extractItem(currentLine, items)
+  }
+
   return items
+}
+
+function extractItem(line: string, items: any[]) {
+  const trimmed = line.trim()
+
+  // Skip footer and non-data lines
+  if (trimmed.toLowerCase().includes('contact') || trimmed.toLowerCase().includes('email')) return
+  if (trimmed.match(/^\d{4,}\s*$/)) return // Just phone numbers
+
+  // Pattern: NUMBER PRODUCTNAME ... SIZE PRICE HSN GST%
+  // Match line starting with number, containing ML/LTR, price, 6-digit HSN, and percentage
+  const match = trimmed.match(/^(\d+)\s+(.+?)\s+(\d+(?:\.\d+)?)\s+(\d{6})\s+(\d+)%?$/)
+
+  if (match) {
+    const price = parseFloat(match[3])
+
+    // Validate
+    if (price > 0 && price < 100000) {
+      items.push({
+        name: match[2].trim(),
+        hsn: match[4].trim(),
+        price: price,
+        gst: match[5]
+      })
+      return
+    }
+  }
+
+  // Alternative pattern with more flexible spacing and text
+  const match2 = trimmed.match(/^(\d+)\s+(.+)\s+(\d{6})\s+(\d+)%?\s*$/)
+  if (match2) {
+    // Extract price from the product name part
+    const namePart = match2[2]
+    const priceMatch = namePart.match(/(.+?)\s+(\d+(?:\.\d+)?)\s*$/)
+
+    if (priceMatch) {
+      const price = parseFloat(priceMatch[2])
+      if (price > 0 && price < 100000) {
+        items.push({
+          name: priceMatch[1].trim(),
+          hsn: match2[3].trim(),
+          price: price,
+          gst: match2[4]
+        })
+      }
+    }
+  }
 }
 
 function generateCSV(items: any[]): string {
