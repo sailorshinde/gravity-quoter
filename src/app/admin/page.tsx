@@ -9,6 +9,14 @@ interface PriceList {
   itemCount: number
   uploadedDate: string
   active: boolean
+  status: 'draft' | 'submitted'
+}
+
+interface DraftPricing {
+  fileName: string
+  csv: string
+  preview: any[]
+  itemCount: number
 }
 
 export default function AdminPage() {
@@ -19,11 +27,14 @@ export default function AdminPage() {
       supplier: 'Gravity Lab',
       itemCount: 694,
       uploadedDate: '2026-04-06',
-      active: true
+      active: true,
+      status: 'submitted'
     }
   ])
+  const [draftPricing, setDraftPricing] = useState<DraftPricing | null>(null)
   const [uploading, setUploading] = useState(false)
   const [selectedLists, setSelectedLists] = useState<string[]>(['gravity-lab-chem'])
+  const [showCSVPreview, setShowCSVPreview] = useState(false)
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -31,24 +42,59 @@ export default function AdminPage() {
 
     setUploading(true)
     try {
-      // In production, this would upload to an API endpoint
-      // For now, we'll just show a demo
-      const newList: PriceList = {
-        id: `custom-${Date.now()}`,
-        name: file.name.replace(/\.[^.]+$/, ''),
-        supplier: 'Custom Upload',
-        itemCount: 0,
-        uploadedDate: new Date().toLocaleDateString(),
-        active: false
+      const content = await file.text()
+
+      // Call API to extract pricing from PDF/file
+      const res = await fetch('/api/extract-pricing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileContent: content,
+          fileName: file.name
+        })
+      })
+
+      const result = await res.json()
+
+      if (result.success) {
+        setDraftPricing({
+          fileName: file.name,
+          csv: result.csv,
+          preview: result.preview,
+          itemCount: result.itemCount
+        })
+        setShowCSVPreview(true)
       }
-      setPriceLists([...priceLists, newList])
-      alert('Price list uploaded successfully! (Demo mode)')
     } catch (err) {
       console.error('Upload failed:', err)
-      alert('Upload failed')
+      alert('Upload failed. Please check the file format.')
     } finally {
       setUploading(false)
     }
+  }
+
+  const handleSubmitPricing = () => {
+    if (!draftPricing) return
+
+    const newList: PriceList = {
+      id: `custom-${Date.now()}`,
+      name: draftPricing.fileName.replace(/\.[^.]+$/, ''),
+      supplier: 'Custom Upload',
+      itemCount: draftPricing.itemCount,
+      uploadedDate: new Date().toLocaleDateString(),
+      active: false,
+      status: 'submitted'
+    }
+
+    setPriceLists([...priceLists, newList])
+    setDraftPricing(null)
+    setShowCSVPreview(false)
+    alert('Price list submitted and is now available in quotes!')
+  }
+
+  const handleDiscardDraft = () => {
+    setDraftPricing(null)
+    setShowCSVPreview(false)
   }
 
   const handleToggle = (id: string) => {
@@ -80,25 +126,98 @@ export default function AdminPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Upload Section */}
           <div className="lg:col-span-1">
-            <div className="bg-white rounded-lg border-2 border-dashed border-blue-300 p-8">
-              <label className="cursor-pointer block">
-                <div className="text-center">
-                  <p className="text-4xl mb-2">📁</p>
-                  <p className="font-semibold text-gray-900">Upload Price List</p>
-                  <p className="text-sm text-gray-600 mt-1">
-                    Excel or CSV file
-                  </p>
-                  <input
-                    type="file"
-                    accept=".xlsx,.xls,.csv"
-                    onChange={handleUpload}
-                    disabled={uploading}
-                    className="hidden"
-                  />
+            {!draftPricing ? (
+              <div className="bg-white rounded-lg border-2 border-dashed border-blue-300 p-8">
+                <label className="cursor-pointer block">
+                  <div className="text-center">
+                    <p className="text-4xl mb-2">📄</p>
+                    <p className="font-semibold text-gray-900">Upload Price List</p>
+                    <p className="text-sm text-gray-600 mt-1">
+                      PDF, Excel or CSV
+                    </p>
+                    <input
+                      type="file"
+                      accept=".pdf,.xlsx,.xls,.csv"
+                      onChange={handleUpload}
+                      disabled={uploading}
+                      className="hidden"
+                    />
+                  </div>
+                </label>
+                {uploading && <p className="text-center mt-4 text-blue-600">Processing file...</p>}
+              </div>
+            ) : (
+              <div className="bg-yellow-50 rounded-lg border-2 border-yellow-300 p-6">
+                <p className="font-semibold text-yellow-900 mb-2">⚠️ Draft in Review</p>
+                <p className="text-sm text-yellow-800 mb-4">
+                  {draftPricing.fileName} ({draftPricing.itemCount} items)
+                </p>
+                <div className="space-y-2">
+                  <button
+                    onClick={() => setShowCSVPreview(true)}
+                    className="w-full px-3 py-2 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700"
+                  >
+                    Review CSV
+                  </button>
+                  <button
+                    onClick={handleSubmitPricing}
+                    className="w-full px-3 py-2 bg-green-600 text-white rounded text-sm font-medium hover:bg-green-700"
+                  >
+                    Submit & Activate
+                  </button>
+                  <button
+                    onClick={handleDiscardDraft}
+                    className="w-full px-3 py-2 bg-gray-600 text-white rounded text-sm font-medium hover:bg-gray-700"
+                  >
+                    Discard
+                  </button>
                 </div>
-              </label>
-              {uploading && <p className="text-center mt-4 text-blue-600">Uploading...</p>}
-            </div>
+              </div>
+            )}
+
+            {showCSVPreview && draftPricing && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                <div className="bg-white rounded-lg max-w-4xl w-full max-h-96 overflow-auto">
+                  <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex justify-between items-center">
+                    <h3 className="text-lg font-bold text-gray-900">CSV Preview</h3>
+                    <button
+                      onClick={() => setShowCSVPreview(false)}
+                      className="text-gray-500 hover:text-gray-700 text-2xl"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <div className="p-4">
+                    <p className="text-sm text-gray-600 mb-4">Review the extracted pricing data below. Make sure all items and prices are correct before submitting.</p>
+                    <div className="bg-gray-50 p-3 rounded border border-gray-200 font-mono text-xs whitespace-pre-wrap overflow-x-auto">
+                      {draftPricing.csv}
+                    </div>
+                    <div className="mt-4 flex gap-2">
+                      <button
+                        onClick={() => {
+                          const element = document.createElement('a')
+                          element.setAttribute('href', 'data:text/csv;charset=utf-8,' + encodeURIComponent(draftPricing.csv))
+                          element.setAttribute('download', `pricing-${draftPricing.fileName.replace(/\.[^.]+$/, '')}.csv`)
+                          element.style.display = 'none'
+                          document.body.appendChild(element)
+                          element.click()
+                          document.body.removeChild(element)
+                        }}
+                        className="px-3 py-2 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700"
+                      >
+                        ⬇️ Download CSV
+                      </button>
+                      <button
+                        onClick={() => setShowCSVPreview(false)}
+                        className="px-3 py-2 bg-gray-300 text-gray-900 rounded text-sm font-medium hover:bg-gray-400"
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="mt-6 bg-white rounded-lg border border-gray-200 p-4">
               <h3 className="font-semibold text-gray-900 mb-3">Instructions</h3>
@@ -124,7 +243,7 @@ export default function AdminPage() {
                   {priceLists.map(list => (
                     <div
                       key={list.id}
-                      className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50"
+                      className={`flex items-center justify-between p-4 border rounded-lg ${list.status === 'draft' ? 'border-yellow-300 bg-yellow-50' : 'border-gray-200 hover:bg-gray-50'}`}
                     >
                       <div className="flex items-center gap-4 flex-1">
                         <input
@@ -132,18 +251,23 @@ export default function AdminPage() {
                           checked={selectedLists.includes(list.id)}
                           onChange={() => handleToggle(list.id)}
                           className="w-4 h-4 rounded"
-                          disabled={list.id === 'gravity-lab-chem'}
+                          disabled={list.id === 'gravity-lab-chem' || list.status === 'draft'}
                         />
                         <div className="flex-1">
-                          <p className="font-semibold text-gray-900">{list.name}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold text-gray-900">{list.name}</p>
+                            <span className={`text-xs px-2 py-1 rounded ${list.status === 'draft' ? 'bg-yellow-200 text-yellow-800' : 'bg-green-200 text-green-800'}`}>
+                              {list.status === 'draft' ? 'DRAFT' : 'LIVE'}
+                            </span>
+                          </div>
                           <p className="text-sm text-gray-600">
                             {list.supplier} • {list.itemCount} items • Updated: {list.uploadedDate}
                           </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        {selectedLists.includes(list.id) && (
-                          <span className="text-green-600 font-semibold">Active ✓</span>
+                        {selectedLists.includes(list.id) && list.status === 'submitted' && (
+                          <span className="text-green-600 font-semibold text-sm">Active ✓</span>
                         )}
                         {list.id !== 'gravity-lab-chem' && (
                           <button
