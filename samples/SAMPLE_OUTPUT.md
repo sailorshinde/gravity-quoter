@@ -32,14 +32,31 @@ A generated quote includes:
 The application supports exporting quotes in the following formats:
 
 1. **JSON** (`sample-quote.json`): Machine-readable format with all quote data
-2. **Excel** (`.xlsx`): Professional spreadsheet with formatting
+2. **Excel** (`sample-quotation.xlsx`): Professional spreadsheet with Gravity Lab header and formatting, including:
+   - Company details and contact information
+   - Customer and quotation date
+   - Itemized line items with rates, discounts, GST calculations
+   - Totals summary (Subtotal, GST Amount, Grand Total)
+   - Commercial Terms and Conditions
 3. **PDF** (`.pdf`): Print-ready format
 
 ## Usage
 
 These sample files demonstrate:
 - The structure of generated quotes
-- Expected output formats
-- Calculation of totals and tax
-- Professional quote layout
+- Expected output formats with professional branding
+- Calculation of totals, discounts, and GST
+- Professional quote layout matching industry standards
+- Full quotation template ready for use
+
+## Sample Items in Excel Format
+
+The `sample-quotation.xlsx` includes example lab service items:
+- DNA Sequencing Kit
+- Protein Analysis Buffer
+- Centrifuge Tubes
+- PCR Master Mix
+- Electrophoresis Buffer
+
+Each with realistic pricing, quantities, discounts, and GST calculations.
 
