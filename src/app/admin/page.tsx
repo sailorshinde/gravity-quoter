@@ -135,11 +135,11 @@ export default function AdminPage() {
                     <p className="text-4xl mb-2">📄</p>
                     <p className="font-semibold text-gray-900">Upload Price List</p>
                     <p className="text-sm text-gray-600 mt-1">
-                      PDF, Excel or CSV
+                      PDF, Excel, CSV or TXT
                     </p>
                     <input
                       type="file"
-                      accept=".pdf,.xlsx,.xls,.csv"
+                      accept=".pdf,.xlsx,.xls,.csv,.txt"
                       onChange={handleUpload}
                       disabled={uploading}
                       className="hidden"
