@@ -1,0 +1,33 @@
+{
+  "clientName": "ABC Lab Services",
+  "items": [
+    {
+      "description": "DNA Sequencing Analysis",
+      "quantity": 5,
+      "unitPrice": 450.00,
+      "notes": "Human genome, high coverage"
+    },
+    {
+      "description": "Protein Mass Spectrometry",
+      "quantity": 3,
+      "unitPrice": 350.00,
+      "notes": "Standard sample preparation"
+    },
+    {
+      "description": "Data Analysis & Interpretation",
+      "quantity": 1,
+      "unitPrice": 800.00,
+      "notes": "Comprehensive statistical analysis"
+    },
+    {
+      "description": "Bioinformatics Consultation",
+      "quantity": 10,
+      "unitPrice": 150.00,
+      "notes": "Per hour consultation"
+    }
+  ],
+  "subtotal": 6500.00,
+  "tax": 585.00,
+  "total": 7085.00,
+  "generatedAt": "2025-02-15T10:30:00Z"
+}
