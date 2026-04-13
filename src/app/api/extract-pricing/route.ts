@@ -84,13 +84,25 @@ async function extractWithDocumentAI(pdfBuffer: Buffer): Promise<string> {
   const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID
   const processorId = process.env.GOOGLE_CLOUD_PROCESSOR_ID
   const region = process.env.GOOGLE_CLOUD_REGION || 'us'
+  const credentialsJson = process.env.GOOGLE_CREDENTIALS_JSON
 
   if (!projectId || !processorId) {
     throw new Error('Missing Google Cloud credentials in environment variables')
   }
 
+  // Parse credentials if provided as JSON string (for Railway/production)
+  let credentials: any = undefined
+  if (credentialsJson) {
+    try {
+      credentials = JSON.parse(credentialsJson)
+    } catch (e) {
+      console.warn('Failed to parse GOOGLE_CREDENTIALS_JSON, will rely on GOOGLE_APPLICATION_CREDENTIALS')
+    }
+  }
+
   const client = new DocumentProcessorServiceClient({
     apiEndpoint: `${region}-documentai.googleapis.com`,
+    credentials: credentials,
   })
 
   const processorName = client.processorPath(projectId, region, processorId)
