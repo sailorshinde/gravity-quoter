@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { DocumentProcessorServiceClient } from '@google-cloud/documentai'
 import * as protos from '@google-cloud/documentai/build/protos/protos'
+import * as pdfjsLib from 'pdfjs-dist'
+import { PDFDocument } from 'pdf-lib'
 
 export async function POST(request: NextRequest) {
   try {
@@ -102,6 +104,7 @@ async function extractWithDocumentAI(pdfBuffer: Buffer): Promise<string> {
   const processorId = process.env.GOOGLE_CLOUD_PROCESSOR_ID
   const region = process.env.GOOGLE_CLOUD_REGION || 'us'
   const credentialsJson = process.env.GOOGLE_CREDENTIALS_JSON
+  const MAX_PAGES_PER_REQUEST = 30
 
   console.log('Document AI Configuration:', {
     projectId,
@@ -134,6 +137,37 @@ async function extractWithDocumentAI(pdfBuffer: Buffer): Promise<string> {
     console.warn('GOOGLE_CREDENTIALS_JSON not provided, will rely on GOOGLE_APPLICATION_CREDENTIALS file')
   }
 
+  // Get page count
+  const pdfDoc = await PDFDocument.load(pdfBuffer)
+  const pageCount = pdfDoc.getPageCount()
+  console.log(`PDF has ${pageCount} pages`)
+
+  // If PDF has > 30 pages, split it into chunks
+  let pdfChunks: Buffer[] = []
+
+  if (pageCount > MAX_PAGES_PER_REQUEST) {
+    console.log(`PDF exceeds ${MAX_PAGES_PER_REQUEST} page limit. Splitting into chunks...`)
+
+    // Split PDF into chunks of 30 pages each
+    for (let i = 0; i < pageCount; i += MAX_PAGES_PER_REQUEST) {
+      const endPage = Math.min(i + MAX_PAGES_PER_REQUEST, pageCount)
+      console.log(`Creating chunk: pages ${i + 1}-${endPage}`)
+
+      const chunkDoc = await PDFDocument.create()
+      const pagesToCopy = pdfDoc.getPages().slice(i, endPage)
+
+      for (const page of pagesToCopy) {
+        const copiedPage = await chunkDoc.addPage(page)
+      }
+
+      const chunkBuffer = await chunkDoc.save()
+      pdfChunks.push(Buffer.from(chunkBuffer))
+    }
+  } else {
+    pdfChunks = [pdfBuffer]
+  }
+
+  // Process each chunk
   const client = new DocumentProcessorServiceClient({
     apiEndpoint: `${region}-documentai.googleapis.com`,
     credentials: credentials,
@@ -141,50 +175,57 @@ async function extractWithDocumentAI(pdfBuffer: Buffer): Promise<string> {
 
   const processorName = client.processorPath(projectId, region, processorId)
   console.log('Processor name:', processorName)
-  console.log('PDF buffer size:', pdfBuffer.length, 'bytes')
 
-  const request: protos.google.cloud.documentai.v1.IProcessRequest = {
-    name: processorName,
-    rawDocument: {
-      content: pdfBuffer,
-      mimeType: 'application/pdf',
-    },
+  let allExtractedText = ''
+
+  for (let i = 0; i < pdfChunks.length; i++) {
+    const chunk = pdfChunks[i]
+    console.log(`Processing chunk ${i + 1} of ${pdfChunks.length} (${chunk.length} bytes)`)
+
+    const request: protos.google.cloud.documentai.v1.IProcessRequest = {
+      name: processorName,
+      rawDocument: {
+        content: chunk,
+        mimeType: 'application/pdf',
+      },
+    }
+
+    console.log('Sending request to Document AI API...')
+
+    let result: any
+    try {
+      result = await Promise.race([
+        client.processDocument(request),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Document AI API timeout after 5 minutes')), 300000)
+        )
+      ])
+    } catch (error) {
+      throw error
+    }
+
+    console.log('Document AI API response received for chunk ' + (i + 1))
+    const response = result[0]
+    const document = response.document
+
+    if (!document) {
+      throw new Error(`No document returned from Document AI for chunk ${i + 1}`)
+    }
+
+    // Extract text from the document
+    let extractedText = document.text || ''
+
+    // Also try to extract from entities if available
+    if (document.entities && document.entities.length > 0) {
+      extractedText += '\n\n' + document.entities
+        .map((entity: any) => `${entity.type}: ${entity.textAnchor?.content || entity.mentionText || ''}`)
+        .join('\n')
+    }
+
+    allExtractedText += extractedText + '\n\n'
   }
 
-  console.log('Sending request to Document AI API...')
-
-  let result: any
-  try {
-    // Call with timeout (300 seconds = 5 minutes for large/complex PDFs)
-    result = await Promise.race([
-      client.processDocument(request),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Document AI API timeout after 5 minutes')), 300000)
-      )
-    ])
-  } catch (error) {
-    throw error
-  }
-
-  console.log('Document AI API response received')
-  const response = result[0]
-  const document = response.document
-
-  if (!document) {
-    throw new Error('No document returned from Document AI')
-  }
-
-  // Extract text from the document
-  let extractedText = document.text || ''
-
-  // Also try to extract from entities if available
-  if (document.entities && document.entities.length > 0) {
-    extractedText += '\n\n' + document.entities
-      .map((entity: any) => `${entity.type}: ${entity.textAnchor?.content || entity.mentionText || ''}`)
-      .join('\n')
-  }
-
-  return extractedText
+  return allExtractedText
 }
 
 function extractPricingFromContent(content: string, fileType?: string): any[] {
