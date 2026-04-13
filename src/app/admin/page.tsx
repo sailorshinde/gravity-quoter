@@ -32,6 +32,7 @@ export default function AdminPage() {
     }
   ])
   const [draftPricing, setDraftPricing] = useState<DraftPricing | null>(null)
+  const [draftName, setDraftName] = useState<string>('')
   const [uploading, setUploading] = useState(false)
   const [selectedLists, setSelectedLists] = useState<string[]>(['gravity-lab-chem'])
   const [showCSVPreview, setShowCSVPreview] = useState(false)
@@ -60,6 +61,7 @@ export default function AdminPage() {
           preview: result.preview,
           itemCount: result.itemCount
         })
+        setDraftName(file.name.replace(/\.[^.]+$/, ''))
         setShowCSVPreview(true)
       } else {
         alert(result.error || 'Failed to extract pricing')
@@ -73,11 +75,14 @@ export default function AdminPage() {
   }
 
   const handleSubmitPricing = () => {
-    if (!draftPricing) return
+    if (!draftPricing || !draftName.trim()) {
+      alert('Please enter a name for the price list')
+      return
+    }
 
     const newList: PriceList = {
       id: `custom-${Date.now()}`,
-      name: draftPricing.fileName.replace(/\.[^.]+$/, ''),
+      name: draftName.trim(),
       supplier: 'Custom Upload',
       itemCount: draftPricing.itemCount,
       uploadedDate: new Date().toLocaleDateString(),
@@ -87,12 +92,14 @@ export default function AdminPage() {
 
     setPriceLists([...priceLists, newList])
     setDraftPricing(null)
+    setDraftName('')
     setShowCSVPreview(false)
     alert('Price list submitted and is now available in quotes!')
   }
 
   const handleDiscardDraft = () => {
     setDraftPricing(null)
+    setDraftName('')
     setShowCSVPreview(false)
     // Reset file input
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
@@ -162,6 +169,18 @@ export default function AdminPage() {
                 <p className="text-sm text-yellow-800 mb-4">
                   {draftPricing.fileName} ({draftPricing.itemCount} items)
                 </p>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-yellow-900 mb-2">
+                    Price List Name
+                  </label>
+                  <input
+                    type="text"
+                    value={draftName}
+                    onChange={(e) => setDraftName(e.target.value)}
+                    placeholder="Enter a custom name for this price list"
+                    className="w-full px-3 py-2 border border-yellow-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                  />
+                </div>
                 <div className="space-y-2">
                   <button
                     onClick={() => setShowCSVPreview(true)}
