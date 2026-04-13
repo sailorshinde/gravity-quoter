@@ -26,10 +26,16 @@ export async function POST(request: NextRequest) {
         fileContent = await extractWithDocumentAI(Buffer.from(buffer))
       } catch (docaiError) {
         console.error('Document AI error:', docaiError)
+        const errorMessage = (docaiError as any).message || String(docaiError)
+        const errorDetails = (docaiError as any).details || (docaiError as any).code || 'Unknown error'
         return NextResponse.json({
           success: false,
           error: 'Failed to extract PDF using Document AI.',
-          debug: { errorType: (docaiError as any).message }
+          debug: {
+            errorType: errorMessage,
+            errorDetails: errorDetails,
+            fullError: String(docaiError)
+          }
         }, { status: 400 })
       }
     } else if (fileExt === 'csv' || fileExt === 'txt' || file.type === 'text/csv' || file.type === 'text/plain') {
@@ -86,6 +92,14 @@ async function extractWithDocumentAI(pdfBuffer: Buffer): Promise<string> {
   const region = process.env.GOOGLE_CLOUD_REGION || 'us'
   const credentialsJson = process.env.GOOGLE_CREDENTIALS_JSON
 
+  console.log('Document AI Configuration:', {
+    projectId,
+    processorId,
+    region,
+    hasCredentialsJson: !!credentialsJson,
+    credentialsJsonLength: credentialsJson?.length || 0
+  })
+
   if (!projectId || !processorId) {
     throw new Error('Missing Google Cloud credentials in environment variables')
   }
@@ -95,9 +109,13 @@ async function extractWithDocumentAI(pdfBuffer: Buffer): Promise<string> {
   if (credentialsJson) {
     try {
       credentials = JSON.parse(credentialsJson)
+      console.log('Successfully parsed GOOGLE_CREDENTIALS_JSON')
     } catch (e) {
-      console.warn('Failed to parse GOOGLE_CREDENTIALS_JSON, will rely on GOOGLE_APPLICATION_CREDENTIALS')
+      console.error('Failed to parse GOOGLE_CREDENTIALS_JSON:', e)
+      throw new Error(`Invalid GOOGLE_CREDENTIALS_JSON format: ${(e as any).message}`)
     }
+  } else {
+    console.warn('GOOGLE_CREDENTIALS_JSON not provided, will rely on GOOGLE_APPLICATION_CREDENTIALS')
   }
 
   const client = new DocumentProcessorServiceClient({
@@ -106,6 +124,8 @@ async function extractWithDocumentAI(pdfBuffer: Buffer): Promise<string> {
   })
 
   const processorName = client.processorPath(projectId, region, processorId)
+  console.log('Processor name:', processorName)
+  console.log('PDF buffer size:', pdfBuffer.length, 'bytes')
 
   const request: protos.google.cloud.documentai.v1.IProcessRequest = {
     name: processorName,
@@ -115,7 +135,9 @@ async function extractWithDocumentAI(pdfBuffer: Buffer): Promise<string> {
     },
   }
 
+  console.log('Sending request to Document AI API...')
   const result = await client.processDocument(request)
+  console.log('Document AI API response received')
   const response = result[0]
   const document = response.document
 
