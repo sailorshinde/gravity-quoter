@@ -137,16 +137,38 @@ async function extractWithDocumentAI(pdfBuffer: Buffer): Promise<string> {
     console.warn('GOOGLE_CREDENTIALS_JSON not provided, will rely on GOOGLE_APPLICATION_CREDENTIALS file')
   }
 
-  // For now, process the full PDF buffer
-  // Document AI will handle the page limit and we'll catch the error
-  const pdfChunks = [pdfBuffer]
+  // Get page count and split if necessary
+  let pdfChunks: Buffer[] = []
 
   try {
     const pdfDoc = await PDFDocument.load(pdfBuffer)
     const pageCount = pdfDoc.getPageCount()
     console.log(`PDF has ${pageCount} pages`)
+
+    if (pageCount > MAX_PAGES_PER_REQUEST) {
+      console.log(`PDF exceeds ${MAX_PAGES_PER_REQUEST} page limit. Splitting into chunks...`)
+
+      // Split PDF into chunks of 30 pages each
+      for (let i = 0; i < pageCount; i += MAX_PAGES_PER_REQUEST) {
+        const endPage = Math.min(i + MAX_PAGES_PER_REQUEST, pageCount)
+        console.log(`Creating chunk: pages ${i + 1}-${endPage}`)
+
+        const chunkDoc = await PDFDocument.create()
+        const pageIndices = Array.from({ length: endPage - i }, (_, idx) => i + idx)
+
+        // Use copyPages to properly copy pages
+        const copiedPages = await chunkDoc.copyPages(pdfDoc, pageIndices)
+        copiedPages.forEach(page => chunkDoc.addPage(page))
+
+        const chunkBuffer = await chunkDoc.save()
+        pdfChunks.push(Buffer.from(chunkBuffer))
+      }
+    } else {
+      pdfChunks = [pdfBuffer]
+    }
   } catch (e) {
-    console.warn('Could not determine page count, will attempt to process')
+    console.error('Error splitting PDF:', e)
+    throw new Error(`Failed to process PDF: ${(e as any).message}`)
   }
 
   // Process each chunk
@@ -182,13 +204,7 @@ async function extractWithDocumentAI(pdfBuffer: Buffer): Promise<string> {
           setTimeout(() => reject(new Error('Document AI API timeout after 5 minutes')), 300000)
         )
       ])
-    } catch (error: any) {
-      const errorMessage = error?.message || String(error)
-      // Check if it's a page limit error
-      if (errorMessage.includes('PAGE_LIMIT_EXCEEDED') || errorMessage.includes('page') || errorMessage.includes('exceed')) {
-        console.error('Page limit exceeded error:', errorMessage)
-        throw new Error(`PDF has too many pages for OCR processing. Please split the PDF into smaller files (max 30 pages per file) and upload separately. Error: ${errorMessage}`)
-      }
+    } catch (error) {
       throw error
     }
 
