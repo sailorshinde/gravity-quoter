@@ -142,15 +142,18 @@ async function extractWithDocumentAI(pdfBuffer: Buffer): Promise<string> {
 
   console.log('Sending request to Document AI API...')
 
-  // Add timeout to prevent hanging
-  const timeoutPromise = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error('Document AI API timeout after 60 seconds')), 60000)
-  )
-
-  const result = await Promise.race([
-    client.processDocument(request),
-    timeoutPromise
-  ]) as Awaited<ReturnType<typeof client.processDocument>>
+  let result: any
+  try {
+    // Call with timeout
+    result = await Promise.race([
+      client.processDocument(request),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Document AI API timeout after 60 seconds')), 60000)
+      )
+    ])
+  } catch (error) {
+    throw error
+  }
 
   console.log('Document AI API response received')
   const response = result[0]
@@ -166,7 +169,7 @@ async function extractWithDocumentAI(pdfBuffer: Buffer): Promise<string> {
   // Also try to extract from entities if available
   if (document.entities && document.entities.length > 0) {
     extractedText += '\n\n' + document.entities
-      .map(entity => `${entity.type}: ${entity.textAnchor?.content || entity.mentionText || ''}`)
+      .map((entity: any) => `${entity.type}: ${entity.textAnchor?.content || entity.mentionText || ''}`)
       .join('\n')
   }
 
