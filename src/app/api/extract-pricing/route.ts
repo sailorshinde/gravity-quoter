@@ -155,11 +155,11 @@ async function extractWithDocumentAI(pdfBuffer: Buffer): Promise<string> {
 
   let result: any
   try {
-    // Call with timeout (120 seconds for large PDFs)
+    // Call with timeout (300 seconds = 5 minutes for large/complex PDFs)
     result = await Promise.race([
       client.processDocument(request),
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Document AI API timeout after 120 seconds')), 120000)
+        setTimeout(() => reject(new Error('Document AI API timeout after 5 minutes')), 300000)
       )
     ])
   } catch (error) {
