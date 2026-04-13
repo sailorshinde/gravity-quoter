@@ -109,13 +109,18 @@ async function extractWithDocumentAI(pdfBuffer: Buffer): Promise<string> {
   if (credentialsJson) {
     try {
       credentials = JSON.parse(credentialsJson)
-      console.log('Successfully parsed GOOGLE_CREDENTIALS_JSON')
+      console.log('Successfully parsed GOOGLE_CREDENTIALS_JSON', {
+        type: credentials.type,
+        project_id: credentials.project_id,
+        client_email: credentials.client_email,
+        hasPrivateKey: !!credentials.private_key
+      })
     } catch (e) {
       console.error('Failed to parse GOOGLE_CREDENTIALS_JSON:', e)
       throw new Error(`Invalid GOOGLE_CREDENTIALS_JSON format: ${(e as any).message}`)
     }
   } else {
-    console.warn('GOOGLE_CREDENTIALS_JSON not provided, will rely on GOOGLE_APPLICATION_CREDENTIALS')
+    console.warn('GOOGLE_CREDENTIALS_JSON not provided, will rely on GOOGLE_APPLICATION_CREDENTIALS file')
   }
 
   const client = new DocumentProcessorServiceClient({
@@ -136,7 +141,17 @@ async function extractWithDocumentAI(pdfBuffer: Buffer): Promise<string> {
   }
 
   console.log('Sending request to Document AI API...')
-  const result = await client.processDocument(request)
+
+  // Add timeout to prevent hanging
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('Document AI API timeout after 60 seconds')), 60000)
+  )
+
+  const result = await Promise.race([
+    client.processDocument(request),
+    timeoutPromise
+  ]) as Awaited<ReturnType<typeof client.processDocument>>
+
   console.log('Document AI API response received')
   const response = result[0]
   const document = response.document
