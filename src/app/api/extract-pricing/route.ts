@@ -16,11 +16,22 @@ export async function POST(request: NextRequest) {
 
     const fileName = file.name
     const fileExt = fileName.split('.').pop()?.toLowerCase()
+    const fileSizeMB = file.size / (1024 * 1024)
 
     let fileContent = ''
 
     if (fileExt === 'pdf' || file.type === 'application/pdf') {
       // Use Google Document AI to extract text from PDF
+      console.log(`Processing PDF: ${fileName} (${fileSizeMB.toFixed(2)}MB)`)
+
+      if (fileSizeMB > 50) {
+        return NextResponse.json({
+          success: false,
+          error: 'PDF file is too large. Maximum size is 50MB.',
+          debug: { fileSizeMB }
+        }, { status: 400 })
+      }
+
       try {
         const buffer = await file.arrayBuffer()
         fileContent = await extractWithDocumentAI(Buffer.from(buffer))
@@ -144,11 +155,11 @@ async function extractWithDocumentAI(pdfBuffer: Buffer): Promise<string> {
 
   let result: any
   try {
-    // Call with timeout
+    // Call with timeout (120 seconds for large PDFs)
     result = await Promise.race([
       client.processDocument(request),
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Document AI API timeout after 60 seconds')), 60000)
+        setTimeout(() => reject(new Error('Document AI API timeout after 120 seconds')), 120000)
       )
     ])
   } catch (error) {
