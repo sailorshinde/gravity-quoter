@@ -137,14 +137,14 @@ async function extractWithReducto(pdfBuffer: Buffer, fileName: string): Promise<
 
     console.log('Base64 file size:', base64File.length, 'bytes')
 
-    // Add timeout to upload (30 seconds)
+    // Add timeout to upload (120 seconds for large files)
     const uploadResponse = await Promise.race([
       client.upload({
         file: base64File,
         extension: fileExtension
       }),
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Reducto upload timeout after 30 seconds')), 30000)
+        setTimeout(() => reject(new Error('Reducto upload timeout after 120 seconds')), 120000)
       )
     ]) as any
 
