@@ -151,21 +151,26 @@ async function extractWithReducto(pdfBuffer: Buffer, fileName: string): Promise<
     console.log('File uploaded successfully:', uploadResponse.file_id)
 
     // Define schema for pricing extraction
+    // Reducto expects a schema that directly describes the extraction output
     const schema = {
-      items: {
-        type: 'array',
+      type: 'object',
+      properties: {
         items: {
-          type: 'object',
-          properties: {
-            name: { type: 'string', description: 'Product or item name' },
-            price: { type: 'number', description: 'Unit price' },
-            hsn: { type: 'string', description: 'HSN code' },
-            gst: { type: 'string', description: 'GST percentage' },
-            packing: { type: 'string', description: 'Packing size or quantity' }
-          },
-          required: ['name', 'price', 'hsn', 'gst']
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              price: { type: 'number' },
+              hsn: { type: 'string' },
+              gst: { type: 'string' },
+              packing: { type: 'string' }
+            },
+            required: ['name', 'price', 'hsn', 'gst']
+          }
         }
-      }
+      },
+      required: ['items']
     }
 
     console.log('Extracting pricing data with Reducto...')
