@@ -193,9 +193,16 @@ async function extractWithDocumentAI(pdfBuffer: Buffer): Promise<string> {
       ])
     } catch (error: any) {
       const errorMsg = error?.message || String(error)
+      console.error('Raw Document AI error:', {
+        message: errorMsg,
+        code: error?.code,
+        details: error?.details,
+        fullError: JSON.stringify(error)
+      })
+
       // Check for page limit error and provide helpful message
       if (errorMsg.includes('exceed') || errorMsg.includes('PAGE_LIMIT')) {
-        throw new Error('PDF exceeds 30-page limit. Please split your PDF into files with 30 pages or fewer and upload each separately.')
+        throw new Error(`PDF page limit error from Document AI. Details: ${errorMsg}`)
       }
       throw error
     }
