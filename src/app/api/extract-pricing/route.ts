@@ -66,6 +66,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Parse pricing data from content
+    console.log('Extracted text length:', fileContent.length)
+    console.log('First 500 characters of extracted text:', fileContent.substring(0, 500))
+
     const pricingData = extractPricingFromContent(fileContent, fileExt)
 
     if (pricingData.length === 0) {
