@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { DocumentProcessorServiceClient } from '@google-cloud/documentai'
-import * as protos from '@google-cloud/documentai/build/protos/protos'
-import * as pdfjsLib from 'pdfjs-dist'
-import { PDFDocument } from 'pdf-lib'
+import Reducto from 'reductoai'
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,9 +18,10 @@ export async function POST(request: NextRequest) {
     const fileSizeMB = file.size / (1024 * 1024)
 
     let fileContent = ''
+    let pricingData: any[] = []
 
     if (fileExt === 'pdf' || file.type === 'application/pdf') {
-      // Use Google Document AI to extract text from PDF
+      // Use Reducto to extract text and data from PDF
       console.log(`Processing PDF: ${fileName} (${fileSizeMB.toFixed(2)}MB)`)
 
       if (fileSizeMB > 50) {
@@ -36,23 +34,24 @@ export async function POST(request: NextRequest) {
 
       try {
         const buffer = await file.arrayBuffer()
-        fileContent = await extractWithDocumentAI(Buffer.from(buffer))
-      } catch (docaiError) {
-        console.error('Document AI error:', docaiError)
-        const errorMessage = (docaiError as any).message || String(docaiError)
-        const errorDetails = (docaiError as any).details || (docaiError as any).code || 'Unknown error'
+        pricingData = await extractWithReducto(Buffer.from(buffer), fileName)
+      } catch (reductoError) {
+        console.error('Reducto error:', reductoError)
+        const errorMessage = (reductoError as any).message || String(reductoError)
+        const errorDetails = (reductoError as any).details || (reductoError as any).code || 'Unknown error'
         return NextResponse.json({
           success: false,
-          error: 'Failed to extract PDF using Document AI.',
+          error: 'Failed to extract PDF using Reducto.',
           debug: {
             errorType: errorMessage,
             errorDetails: errorDetails,
-            fullError: String(docaiError)
+            fullError: String(reductoError)
           }
         }, { status: 400 })
       }
     } else if (fileExt === 'csv' || fileExt === 'txt' || file.type === 'text/csv' || file.type === 'text/plain') {
       fileContent = await file.text()
+      pricingData = extractPricingFromContent(fileContent, fileExt)
     } else if (fileExt === 'xlsx' || fileExt === 'xls') {
       return NextResponse.json({
         success: false,
@@ -65,11 +64,8 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Parse pricing data from content
-    console.log('Extracted text length:', fileContent.length)
-    console.log('First 500 characters of extracted text:', fileContent.substring(0, 500))
-
-    const pricingData = extractPricingFromContent(fileContent, fileExt)
+    // Validate extracted data
+    console.log('Extracted items:', pricingData.length)
 
     if (pricingData.length === 0) {
       const firstLines = fileContent.split('\n').slice(0, 15).join('\n')
@@ -117,126 +113,92 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function extractWithDocumentAI(pdfBuffer: Buffer): Promise<string> {
-  const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID
-  const processorId = process.env.GOOGLE_CLOUD_PROCESSOR_ID
-  const region = process.env.GOOGLE_CLOUD_REGION || 'us'
-  const credentialsJson = process.env.GOOGLE_CREDENTIALS_JSON
-  const MAX_PAGES_PER_REQUEST = 30
+async function extractWithReducto(pdfBuffer: Buffer, fileName: string): Promise<any[]> {
+  const apiKey = process.env.REDUCTO_API_KEY
 
-  console.log('Document AI Configuration:', {
-    projectId,
-    processorId,
-    region,
-    hasCredentialsJson: !!credentialsJson,
-    credentialsJsonLength: credentialsJson?.length || 0
+  console.log('Reducto Configuration:', {
+    hasApiKey: !!apiKey,
+    fileName: fileName,
+    bufferSize: pdfBuffer.length
   })
 
-  if (!projectId || !processorId) {
-    throw new Error('Missing Google Cloud credentials in environment variables')
+  if (!apiKey) {
+    throw new Error('Missing REDUCTO_API_KEY in environment variables')
   }
 
-  // Parse credentials if provided as JSON string (for Railway/production)
-  let credentials: any = undefined
-  if (credentialsJson) {
-    try {
-      credentials = JSON.parse(credentialsJson)
-      console.log('Successfully parsed GOOGLE_CREDENTIALS_JSON', {
-        type: credentials.type,
-        project_id: credentials.project_id,
-        client_email: credentials.client_email,
-        hasPrivateKey: !!credentials.private_key
-      })
-    } catch (e) {
-      console.error('Failed to parse GOOGLE_CREDENTIALS_JSON:', e)
-      throw new Error(`Invalid GOOGLE_CREDENTIALS_JSON format: ${(e as any).message}`)
-    }
-  } else {
-    console.warn('GOOGLE_CREDENTIALS_JSON not provided, will rely on GOOGLE_APPLICATION_CREDENTIALS file')
-  }
+  const client = new Reducto({ apiKey })
 
-  // For now, process the PDF as-is
-  // If Document AI returns a page limit error, inform the user
-  const pdfChunks = [pdfBuffer]
+  console.log('Uploading PDF to Reducto...')
 
-  console.log(`PDF buffer size: ${pdfBuffer.length} bytes`)
+  try {
+    // Upload the file
+    const uploadResponse = await client.upload({
+      file: pdfBuffer,
+      filename: fileName
+    })
 
-  // Process each chunk
-  const client = new DocumentProcessorServiceClient({
-    apiEndpoint: `${region}-documentai.googleapis.com`,
-    credentials: credentials,
-  })
+    console.log('File uploaded successfully:', uploadResponse.file_id)
 
-  const processorName = client.processorPath(projectId, region, processorId)
-  console.log('Processor name:', processorName)
-
-  let allExtractedText = ''
-
-  for (let i = 0; i < pdfChunks.length; i++) {
-    const chunk = pdfChunks[i]
-    console.log(`Processing chunk ${i + 1} of ${pdfChunks.length} (${chunk.length} bytes)`)
-
-    const request: protos.google.cloud.documentai.v1.IProcessRequest = {
-      name: processorName,
-      rawDocument: {
-        content: chunk,
-        mimeType: 'application/pdf',
-      },
-      // Enable imageless mode to support up to 30 pages instead of 15
-      advancedOptions: {
-        skipHumanReview: true,
-        enableImagelessProcessing: true
+    // Define schema for pricing extraction
+    const schema = {
+      items: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', description: 'Product or item name' },
+            price: { type: 'number', description: 'Unit price' },
+            hsn: { type: 'string', description: 'HSN code' },
+            gst: { type: 'string', description: 'GST percentage' },
+            packing: { type: 'string', description: 'Packing size or quantity' }
+          },
+          required: ['name', 'price', 'hsn', 'gst']
+        }
       }
-    } as any
+    }
 
-    console.log('Sending request to Document AI API...')
+    console.log('Extracting pricing data with Reducto...')
 
-    let result: any
-    try {
-      result = await Promise.race([
-        client.processDocument(request),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Document AI API timeout after 5 minutes')), 300000)
-        )
-      ])
-    } catch (error: any) {
-      const errorMsg = error?.message || String(error)
-      console.error('Raw Document AI error:', {
-        message: errorMsg,
-        code: error?.code,
-        details: error?.details,
-        fullError: JSON.stringify(error)
+    // Extract data using schema
+    const extractResponse = await client.extract.run({
+      file_id: uploadResponse.file_id,
+      schema: schema
+    })
+
+    console.log('Extraction complete. Items found:', extractResponse.items?.length || 0)
+
+    // Validate and transform extracted items
+    const items = (extractResponse.items || [])
+      .filter((item: any) => {
+        // Validate required fields
+        if (!item.name || !item.price || !item.hsn || !item.gst) {
+          return false
+        }
+
+        // Validate price is a reasonable number
+        const price = typeof item.price === 'string' ? parseFloat(item.price) : item.price
+        return price > 0 && price < 100000
       })
+      .map((item: any) => ({
+        name: String(item.name).trim(),
+        price: typeof item.price === 'string' ? parseFloat(item.price) : item.price,
+        hsn: String(item.hsn).trim(),
+        gst: String(item.gst).trim().replace('%', ''),
+        packing: item.packing ? String(item.packing).trim() : ''
+      }))
 
-      // Check for page limit error and provide helpful message
-      if (errorMsg.includes('exceed') || errorMsg.includes('PAGE_LIMIT')) {
-        throw new Error(`PDF page limit error from Document AI. Details: ${errorMsg}`)
-      }
-      throw error
-    }
+    console.log('Validated items:', items.length)
 
-    console.log('Document AI API response received for chunk ' + (i + 1))
-    const response = result[0]
-    const document = response.document
+    return items
+  } catch (error) {
+    const errorMsg = (error as any).message || String(error)
+    console.error('Raw Reducto error:', {
+      message: errorMsg,
+      fullError: JSON.stringify(error)
+    })
 
-    if (!document) {
-      throw new Error(`No document returned from Document AI for chunk ${i + 1}`)
-    }
-
-    // Extract text from the document
-    let extractedText = document.text || ''
-
-    // Also try to extract from entities if available
-    if (document.entities && document.entities.length > 0) {
-      extractedText += '\n\n' + document.entities
-        .map((entity: any) => `${entity.type}: ${entity.textAnchor?.content || entity.mentionText || ''}`)
-        .join('\n')
-    }
-
-    allExtractedText += extractedText + '\n\n'
+    throw error
   }
-
-  return allExtractedText
 }
 
 function extractPricingFromContent(content: string, fileType?: string): any[] {
@@ -326,7 +288,7 @@ function generateCSV(items: any[]): string {
 
   items.forEach(item => {
     const itemName = item.name.includes(',') ? `"${item.name}"` : item.name
-    csv += `${itemName},"${item.hsn}",${item.price},${item.gst},""\n`
+    csv += `${itemName},"${item.hsn}",${item.price},${item.gst},"${item.packing || ''}"\n`
   })
 
   return csv
