@@ -91,10 +91,25 @@ export async function POST(request: NextRequest) {
       preview: pricingData.slice(0, 5)
     })
   } catch (error) {
-    console.error('Extraction error:', error)
+    const errorMessage = (error as any)?.message || String(error)
+    const errorCode = (error as any)?.code || 'UNKNOWN'
+    const errorDetails = (error as any)?.details || (error as any)?.description || ''
+
+    console.error('Extraction error details:', {
+      message: errorMessage,
+      code: errorCode,
+      details: errorDetails,
+      fullError: JSON.stringify(error, null, 2)
+    })
+
     return NextResponse.json({
       success: false,
-      error: 'Failed to extract pricing. Please check the file format.'
+      error: 'Failed to extract pricing. Please check the file format.',
+      debug: {
+        errorMessage,
+        errorCode,
+        errorDetails
+      }
     }, { status: 500 })
   }
 }
