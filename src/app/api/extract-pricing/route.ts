@@ -179,7 +179,12 @@ async function extractWithDocumentAI(pdfBuffer: Buffer): Promise<string> {
         content: chunk,
         mimeType: 'application/pdf',
       },
-    }
+      // Enable imageless mode to support up to 30 pages instead of 15
+      advancedOptions: {
+        skipHumanReview: true,
+        enableImagelessProcessing: true
+      }
+    } as any
 
     console.log('Sending request to Document AI API...')
 
