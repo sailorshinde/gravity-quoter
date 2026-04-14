@@ -134,10 +134,19 @@ async function extractWithReducto(pdfBuffer: Buffer, fileName: string): Promise<
     // Upload the file (convert Buffer to base64)
     const base64File = pdfBuffer.toString('base64')
     const fileExtension = fileName.split('.').pop() || 'pdf'
-    const uploadResponse = await client.upload({
-      file: base64File,
-      extension: fileExtension
-    })
+
+    console.log('Base64 file size:', base64File.length, 'bytes')
+
+    // Add timeout to upload (30 seconds)
+    const uploadResponse = await Promise.race([
+      client.upload({
+        file: base64File,
+        extension: fileExtension
+      }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Reducto upload timeout after 30 seconds')), 30000)
+      )
+    ]) as any
 
     console.log('File uploaded successfully:', uploadResponse.file_id)
 
@@ -161,13 +170,18 @@ async function extractWithReducto(pdfBuffer: Buffer, fileName: string): Promise<
 
     console.log('Extracting pricing data with Reducto...')
 
-    // Extract data using schema
-    const extractResponse = await client.extract.run({
-      input: uploadResponse,
-      instructions: {
-        schema: schema
-      }
-    })
+    // Add timeout to extract (60 seconds)
+    const extractResponse = await Promise.race([
+      client.extract.run({
+        input: uploadResponse,
+        instructions: {
+          schema: schema
+        }
+      }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Reducto extraction timeout after 60 seconds')), 60000)
+      )
+    ]) as any
 
     console.log('Extraction complete. Response:', JSON.stringify(extractResponse).substring(0, 500))
 
