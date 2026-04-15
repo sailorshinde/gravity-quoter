@@ -7,7 +7,7 @@ import QuoteGenerator from '@/components/QuoteGenerator'
 import ExportOptions from '@/components/ExportOptions'
 
 export default function Home() {
-  const [selectedPricing, setSelectedPricing] = useState<any>(null)
+  const [selectedPricingListIds, setSelectedPricingListIds] = useState<string[]>([])
   const [generatedQuote, setGeneratedQuote] = useState<any>(null)
   const [preloadedItems, setPreloadedItems] = useState<any[]>([])
   const [preloadedClientName, setPreloadedClientName] = useState<string>('')
@@ -29,13 +29,13 @@ export default function Home() {
       <main className="max-w-6xl mx-auto px-6 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-1 space-y-6">
-            <PricingSelector onPricingSelected={setSelectedPricing} />
-            {selectedPricing && (
+            <PricingSelector onPricingSelected={setSelectedPricingListIds} />
+            {selectedPricingListIds.length > 0 && (
               <div className="bg-white rounded-lg border border-gray-200 p-6">
-                <h3 className="font-semibold text-gray-900 mb-2">Active Pricing</h3>
+                <h3 className="font-semibold text-gray-900 mb-2">Active Pricing Lists</h3>
                 <p className="text-sm text-gray-700">
                   <span className="w-2 h-2 bg-green-500 rounded-full inline-block mr-2"></span>
-                  {selectedPricing.name}
+                  {selectedPricingListIds.length} list{selectedPricingListIds.length !== 1 ? 's' : ''} selected
                 </p>
               </div>
             )}
@@ -50,7 +50,7 @@ export default function Home() {
 
           <div className="lg:col-span-2 space-y-6">
             <QuoteGenerator
-              pricingSource={selectedPricing}
+              selectedListIds={selectedPricingListIds}
               preloadedItems={preloadedItems}
               preloadedClientName={preloadedClientName}
               onQuoteGenerated={setGeneratedQuote}
