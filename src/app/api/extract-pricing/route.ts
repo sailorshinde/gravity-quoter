@@ -50,17 +50,37 @@ export async function POST(request: NextRequest) {
         }, { status: 400 })
       }
     } else if (fileExt === 'json' || file.type === 'application/json') {
-      // Handle Reducto JSON export with HTML table content
+      // Handle Reducto JSON export with nested structure
       const jsonText = await file.text()
       try {
         const jsonData = JSON.parse(jsonText)
-        if (jsonData.content && typeof jsonData.content === 'string') {
-          // Parse HTML table from Reducto export
-          pricingData = parseHtmlTableToPricing(jsonData.content)
+
+        // Reducto exports as array with extracted fields
+        if (Array.isArray(jsonData)) {
+          // Find the HTML table in parentBlock of any field
+          let htmlTable = ''
+          for (const item of jsonData) {
+            for (const key in item) {
+              if (item[key]?.parentBlock?.content && item[key].parentBlock.content.includes('<table>')) {
+                htmlTable = item[key].parentBlock.content
+                break
+              }
+            }
+            if (htmlTable) break
+          }
+
+          if (htmlTable) {
+            pricingData = parseHtmlTableToPricing(htmlTable)
+          } else {
+            return NextResponse.json({
+              success: false,
+              error: 'Could not find HTML table in JSON export. Make sure you exported from Reducto with table data.'
+            }, { status: 400 })
+          }
         } else {
           return NextResponse.json({
             success: false,
-            error: 'JSON file must contain "content" field with HTML table data'
+            error: 'JSON file must be a Reducto export (array format)'
           }, { status: 400 })
         }
       } catch (e) {
