@@ -49,6 +49,70 @@ export async function POST(request: NextRequest) {
           }
         }, { status: 400 })
       }
+    } else if (fileExt === 'json' || file.type === 'application/json') {
+      // Handle Reducto JSON export with nested structure
+      const jsonText = await file.text()
+      try {
+        const jsonData = JSON.parse(jsonText)
+
+        // Reducto exports as array with extracted fields
+        if (Array.isArray(jsonData)) {
+          // Find the HTML table in citation.parentBlock of any field
+          let htmlTable = ''
+          for (let i = 0; i < jsonData.length; i++) {
+            const item = jsonData[i]
+
+            for (const key in item) {
+              const field = item[key]
+              // The parentBlock is inside citation, not at top level
+              if (field?.citation?.parentBlock?.content && field.citation.parentBlock.content.includes('<table>')) {
+                htmlTable = field.citation.parentBlock.content
+                break
+              }
+            }
+            if (htmlTable) break
+          }
+
+          if (htmlTable) {
+            pricingData = parseHtmlTableToPricing(htmlTable)
+          } else {
+            return NextResponse.json({
+              success: false,
+              error: 'Could not find HTML table in JSON export. Make sure you exported from Reducto with table data.'
+            }, { status: 400 })
+          }
+        } else if (jsonData.result && jsonData.result.chunks && Array.isArray(jsonData.result.chunks)) {
+          // Format 2: Result with chunks (markdown tables)
+          let found = false
+          for (const chunk of jsonData.result.chunks) {
+            if (chunk.content) {
+              // Parse markdown table arrays from the content
+              pricingData = parseReductoMarkdownTable(chunk.content)
+              if (pricingData.length > 0) {
+                found = true
+                break
+              }
+            }
+          }
+
+          if (!found || pricingData.length === 0) {
+            return NextResponse.json({
+              success: false,
+              error: 'Could not extract pricing data from Reducto export. Make sure it contains a price list table.'
+            }, { status: 400 })
+          }
+        } else {
+          return NextResponse.json({
+            success: false,
+            error: 'Unrecognized JSON format. Please make sure you exported from Reducto.'
+          }, { status: 400 })
+        }
+      } catch (e) {
+        return NextResponse.json({
+          success: false,
+          error: 'Invalid JSON file format: ' + (e as any).message
+        }, { status: 400 })
+      }
     } else if (fileExt === 'csv' || fileExt === 'txt' || file.type === 'text/csv' || file.type === 'text/plain') {
       fileContent = await file.text()
       pricingData = extractPricingFromContent(fileContent, fileExt)
@@ -281,6 +345,159 @@ function extractItem(line: string, items: any[]) {
       }
     }
   }
+}
+
+function parseReductoMarkdownTable(content: string): any[] {
+  const items: any[] = []
+
+  // Extract all array rows from the content
+  // Tables are formatted like: [["Sr.No", "Item Name", ...], ["1", "Product", ...], ...]
+  const arrayPattern = /\[\s*"([^"]+)"\s*(?:,\s*"([^"]*)"\s*)*\]/g
+  const rows: string[][] = []
+
+  let match
+  while ((match = arrayPattern.exec(content)) !== null) {
+    const row: string[] = []
+    // Extract all quoted strings in this array
+    const innerContent = match[0]
+    const stringPattern = /"([^"]*)"/g
+    let stringMatch
+    while ((stringMatch = stringPattern.exec(innerContent)) !== null) {
+      row.push(stringMatch[1])
+    }
+    if (row.length > 0) {
+      rows.push(row)
+    }
+  }
+
+  console.log('[parseReductoMarkdownTable] Extracted rows:', {
+    totalRows: rows.length,
+    firstRow: rows[0],
+    secondRow: rows[1],
+    sampleRows: rows.slice(0, 3)
+  })
+
+  if (rows.length < 2) {
+    console.log('[parseReductoMarkdownTable] Not enough rows for table parsing')
+    return items
+  }
+
+  // First row is header
+  const headers = rows[0]
+  const headersLower = headers.map(h => h.toLowerCase())
+
+  console.log('[parseReductoMarkdownTable] Headers:', headers)
+  console.log('[parseReductoMarkdownTable] Headers (lowercase):', headersLower)
+
+  // Find column indices with better matching
+  let nameIdx = headersLower.findIndex(h => h.includes('item') || h.includes('product') || h.includes('description'))
+  let priceIdx = headersLower.findIndex(h => h.includes('price') || h.includes('retail') || h.includes('cost') || h.includes('rate'))
+  let hsnIdx = headersLower.findIndex(h => h.includes('hsn') || h.includes('code'))
+  let gstIdx = headersLower.findIndex(h => h.includes('gst') || h.includes('tax'))
+  let packIdx = headersLower.findIndex(h => h.includes('pack') || h.includes('packing') || h.includes('size'))
+
+  console.log('[parseReductoMarkdownTable] Initial indices:', { nameIdx, priceIdx, hsnIdx, gstIdx, packIdx })
+
+  // If columns not found by keyword, try to infer from position
+  // Assume standard table order: Name/Item in first/second column, Price somewhere, HSN, GST, Packing
+  if (nameIdx === -1) nameIdx = 1
+  if (priceIdx === -1) priceIdx = headers.length > 2 ? headers.length - 2 : 2
+  if (hsnIdx === -1) hsnIdx = headers.length > 3 ? headers.length - 3 : 3
+  if (gstIdx === -1) gstIdx = headers.length > 4 ? headers.length - 4 : 4
+  if (packIdx === -1) packIdx = headers.length > 5 ? headers.length - 5 : 5
+
+  console.log('[parseReductoMarkdownTable] Final indices:', { nameIdx, priceIdx, hsnIdx, gstIdx, packIdx })
+
+  // Parse data rows
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i]
+    if (row.length === 0) continue
+
+    const name = row[nameIdx]?.trim() || ''
+    const priceStr = row[priceIdx]?.trim().replace(/[^0-9.]/g, '') || '0'
+    const price = parseFloat(priceStr) || 0
+    const hsn = row[hsnIdx]?.trim() || ''
+    const gst = row[gstIdx]?.trim().replace('%', '').replace(/[^0-9]/g, '') || '0'
+    const packing = row[packIdx]?.trim() || ''
+
+    if (i <= 3) {
+      console.log(`[parseReductoMarkdownTable] Row ${i}:`, { name, priceStr, price, hsn, gst, packing, rowData: row })
+    }
+
+    if (name && price > 0 && hsn) {
+      items.push({
+        name,
+        price,
+        hsn,
+        gst,
+        packing
+      })
+    }
+  }
+
+  console.log('[parseReductoMarkdownTable] Final items:', items.length)
+  return items
+}
+
+function parseHtmlTableToPricing(htmlContent: string): any[] {
+  const items: any[] = []
+
+  // Extract all table rows
+  const rowMatches = Array.from(htmlContent.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g))
+
+  let isHeaderRow = true
+  const columnIndices: { [key: string]: number } = {}
+
+  for (let i = 0; i < rowMatches.length; i++) {
+    const match = rowMatches[i]
+    const rowContent = match[1]
+    // Match both <td> and <th> cells (headers use <th>, data uses <td>)
+    const cellMatches = rowContent.matchAll(/<(?:td|th)[^>]*>([\s\S]*?)<\/(?:td|th)>/g)
+    const cells = Array.from(cellMatches).map(m => {
+      // Remove HTML tags and clean whitespace
+      return m[1]
+        .replace(/<[^>]*>/g, '')
+        .replace(/\n/g, ' ')
+        .trim()
+    })
+
+    // First row is header
+    if (isHeaderRow) {
+      cells.forEach((cell, idx) => {
+        const normalized = cell.toUpperCase()
+        if (normalized.includes('PRODUCT')) columnIndices['name'] = idx
+        if (normalized.includes('PRICE')) columnIndices['price'] = idx
+        if (normalized.includes('HSN')) columnIndices['hsn'] = idx
+        if (normalized.includes('GST')) columnIndices['gst'] = idx
+        if (normalized.includes('PKG')) columnIndices['packing'] = idx
+      })
+      isHeaderRow = false
+      continue
+    }
+
+    // Skip empty rows
+    if (cells.length === 0 || !cells.some(c => c.trim())) continue
+
+    // Extract pricing data
+    const item: any = {}
+    if (columnIndices['name'] !== undefined) item.name = cells[columnIndices['name']]?.trim() || ''
+    if (columnIndices['price'] !== undefined) {
+      const priceStr = cells[columnIndices['price']]?.trim() || '0'
+      item.price = parseFloat(priceStr) || 0
+    }
+    if (columnIndices['hsn'] !== undefined) item.hsn = cells[columnIndices['hsn']]?.trim() || ''
+    if (columnIndices['gst'] !== undefined) {
+      item.gst = cells[columnIndices['gst']]?.trim().replace('%', '') || '0'
+    }
+    if (columnIndices['packing'] !== undefined) item.packing = cells[columnIndices['packing']]?.trim() || ''
+
+    // Only add if we have required fields
+    if (item.name && item.price && item.hsn && item.gst) {
+      items.push(item)
+    }
+  }
+
+  return items
 }
 
 function generateCSV(items: any[]): string {
