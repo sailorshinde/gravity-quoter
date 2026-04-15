@@ -374,15 +374,21 @@ function extractItem(line: string, items: any[]) {
 }
 
 function parseHtmlTableToPricing(htmlContent: string): any[] {
+  console.log('parseHtmlTableToPricing called with content length:', htmlContent.length)
+  console.log('HTML content preview:', htmlContent.substring(0, 200))
+
   const items: any[] = []
 
   // Extract all table rows
-  const rowMatches = htmlContent.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)
+  const rowMatches = Array.from(htmlContent.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g))
+  console.log('Found rows:', rowMatches.length)
 
   let isHeaderRow = true
   const columnIndices: { [key: string]: number } = {}
 
-  for (const match of rowMatches) {
+  for (let i = 0; i < rowMatches.length; i++) {
+    const match = rowMatches[i]
+    console.log(`Processing row ${i}...`)
     const rowContent = match[1]
     // Match both <td> and <th> cells (headers use <th>, data uses <td>)
     const cellMatches = rowContent.matchAll(/<(?:td|th)[^>]*>([\s\S]*?)<\/(?:td|th)>/g)
