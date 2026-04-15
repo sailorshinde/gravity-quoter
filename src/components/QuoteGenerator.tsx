@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import ItemSelector from './ItemSelector'
-import { gravityLabItems } from '@/data/gravityLabPricingData'
 
 interface QuoteItem {
   description: string
@@ -16,7 +15,7 @@ interface QuoteItem {
   isUnmatched?: boolean
 }
 
-export default function QuoteGenerator({ pricingSource, preloadedItems = [], preloadedClientName = '', onQuoteGenerated }: any) {
+export default function QuoteGenerator({ selectedListIds = [], preloadedItems = [], preloadedClientName = '', onQuoteGenerated }: any) {
   const [clientName, setClientName] = useState(preloadedClientName)
   const [items, setItems] = useState<QuoteItem[]>([
     { description: '', quantity: 1, unitPrice: 0 },
@@ -91,7 +90,7 @@ export default function QuoteGenerator({ pricingSource, preloadedItems = [], pre
         body: JSON.stringify({
           clientName,
           items,
-          pricingSourceId: pricingSource?.id || 'gravity-lab-chem',
+          selectedListIds: selectedListIds,
         }),
       })
       const quote = await res.json()
@@ -195,8 +194,8 @@ export default function QuoteGenerator({ pricingSource, preloadedItems = [], pre
 
         {/* Item Selector from Pricing Database */}
         <ItemSelector
-          items={gravityLabItems}
-          onItemSelect={(item, quantity) => {
+          selectedListIds={selectedListIds}
+          onItemSelect={(item, listId, quantity) => {
             const gstNumber = parseFloat(item.gst.replace('%', ''))
             setItems([...items, {
               description: `${item.name} (${item.packing})`,
