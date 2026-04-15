@@ -195,11 +195,22 @@ async function extractWithReducto(pdfBuffer: Buffer, fileName: string): Promise<
   console.log('Uploading PDF to Reducto...')
 
   try {
-    // Upload the file
-    const uploadResponse = await client.upload({
-      file: pdfBuffer,
-      filename: fileName
-    })
+    // Upload the file (convert Buffer to base64)
+    const base64File = pdfBuffer.toString('base64')
+    const fileExtension = fileName.split('.').pop() || 'pdf'
+
+    console.log('Base64 file size:', base64File.length, 'bytes')
+
+    // Add timeout to upload (120 seconds for large files)
+    const uploadResponse = await Promise.race([
+      client.upload({
+        file: base64File,
+        extension: fileExtension
+      }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Reducto upload timeout after 120 seconds')), 120000)
+      )
+    ]) as any
 
     console.log('File uploaded successfully:', uploadResponse.file_id)
 
@@ -223,16 +234,36 @@ async function extractWithReducto(pdfBuffer: Buffer, fileName: string): Promise<
 
     console.log('Extracting pricing data with Reducto...')
 
-    // Extract data using schema
-    const extractResponse = await client.extract.run({
-      file_id: uploadResponse.file_id,
-      schema: schema
-    })
+    // Add timeout to extract (60 seconds)
+    const extractResponse = await Promise.race([
+      client.extract.run({
+        input: uploadResponse,
+        instructions: {
+          schema: schema
+        }
+      }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Reducto extraction timeout after 60 seconds')), 60000)
+      )
+    ]) as any
 
-    console.log('Extraction complete. Items found:', extractResponse.items?.length || 0)
+    console.log('Extraction complete. Response:', JSON.stringify(extractResponse).substring(0, 500))
+
+    // Extract items from response - Reducto returns result which should contain our schema structure
+    let extractedItems: any[] = []
+    const response = extractResponse as any
+    if (response.result) {
+      if (Array.isArray(response.result)) {
+        extractedItems = response.result.length > 0 && response.result[0].items ? response.result[0].items : []
+      } else if (response.result.items) {
+        extractedItems = response.result.items
+      }
+    }
+
+    console.log('Extracted items count:', extractedItems.length)
 
     // Validate and transform extracted items
-    const items = (extractResponse.items || [])
+    const items = (extractedItems || [])
       .filter((item: any) => {
         // Validate required fields
         if (!item.name || !item.price || !item.hsn || !item.gst) {
