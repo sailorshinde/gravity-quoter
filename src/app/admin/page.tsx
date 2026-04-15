@@ -1,41 +1,40 @@
 'use client'
 
-import { useState } from 'react'
-
-interface PriceList {
-  id: string
-  name: string
-  supplier: string
-  itemCount: number
-  uploadedDate: string
-  active: boolean
-  status: 'draft' | 'submitted'
-}
+import { useState, useEffect } from 'react'
+import { savePriceLists, loadPriceLists, deletePriceList, updatePriceList, PriceList, PriceItem } from '@/lib/pricingStorage'
 
 interface DraftPricing {
   fileName: string
   csv: string
   preview: any[]
   itemCount: number
+  items: PriceItem[]
 }
 
 export default function AdminPage() {
-  const [priceLists, setPriceLists] = useState<PriceList[]>([
-    {
-      id: 'gravity-lab-chem',
-      name: 'Gravity Lab Chemicals',
-      supplier: 'Gravity Lab',
-      itemCount: 694,
-      uploadedDate: '2026-04-06',
-      active: true,
-      status: 'submitted'
-    }
-  ])
+  const [priceLists, setPriceLists] = useState<PriceList[]>([])
   const [draftPricing, setDraftPricing] = useState<DraftPricing | null>(null)
   const [draftName, setDraftName] = useState<string>('')
   const [uploading, setUploading] = useState(false)
-  const [selectedLists, setSelectedLists] = useState<string[]>(['gravity-lab-chem'])
+  const [selectedLists, setSelectedLists] = useState<string[]>([])
   const [showCSVPreview, setShowCSVPreview] = useState(false)
+  const [editingListId, setEditingListId] = useState<string | null>(null)
+  const [mounted, setMounted] = useState(false)
+
+  // Load pricing lists from localStorage on mount
+  useEffect(() => {
+    const lists = loadPriceLists()
+    setPriceLists(lists)
+    setSelectedLists(lists.filter(l => l.active).map(l => l.id))
+    setMounted(true)
+  }, [])
+
+  // Save pricing lists to localStorage whenever they change
+  useEffect(() => {
+    if (mounted && priceLists.length > 0) {
+      savePriceLists(priceLists)
+    }
+  }, [priceLists, mounted])
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -46,7 +45,6 @@ export default function AdminPage() {
       const formData = new FormData()
       formData.append('file', file)
 
-      // Call API to extract pricing from PDF/file
       const res = await fetch('/api/extract-pricing', {
         method: 'POST',
         body: formData
@@ -55,14 +53,22 @@ export default function AdminPage() {
       const result = await res.json()
 
       if (result.success) {
+        // Parse CSV to get items
+        const items = parseCSVToItems(result.csv)
+
+        // Extract columns from items
+        const columns = extractColumns(items)
+
         setDraftPricing({
           fileName: file.name,
           csv: result.csv,
           preview: result.preview,
-          itemCount: result.itemCount
+          itemCount: result.itemCount,
+          items: items
         })
         setDraftName(file.name.replace(/\.[^.]+$/, ''))
         setShowCSVPreview(true)
+        setEditingListId(null)
       } else {
         alert(result.error || 'Failed to extract pricing')
       }
@@ -74,39 +80,107 @@ export default function AdminPage() {
     }
   }
 
+  const parseCSVToItems = (csv: string): PriceItem[] => {
+    const lines = csv.trim().split('\n')
+    if (lines.length < 2) return []
+
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase())
+    const items: PriceItem[] = []
+
+    for (let i = 1; i < lines.length; i++) {
+      const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''))
+
+      const item: PriceItem = {
+        name: values[headers.indexOf('item name')] || '',
+        price: parseFloat(values[headers.indexOf('unit price')] || '0') || 0,
+        hsn: values[headers.indexOf('hsn code')] || '',
+        gst: values[headers.indexOf('gst %')] || '0',
+        packing: values[headers.indexOf('packing')] || ''
+      }
+
+      if (item.name && item.price && item.hsn) {
+        items.push(item)
+      }
+    }
+
+    return items
+  }
+
+  const extractColumns = (items: PriceItem[]): string[] => {
+    const columns = new Set<string>()
+    columns.add('Item Name')
+    columns.add('HSN Code')
+    columns.add('Unit Price')
+    columns.add('GST %')
+
+    if (items.some(item => item.packing)) {
+      columns.add('Packing')
+    }
+
+    return Array.from(columns)
+  }
+
   const handleSubmitPricing = () => {
     if (!draftPricing || !draftName.trim()) {
       alert('Please enter a name for the price list')
       return
     }
 
-    const newList: PriceList = {
-      id: `custom-${Date.now()}`,
-      name: draftName.trim(),
-      supplier: 'Custom Upload',
-      itemCount: draftPricing.itemCount,
-      uploadedDate: new Date().toLocaleDateString(),
-      active: false,
-      status: 'submitted'
+    if (editingListId) {
+      // Update existing list
+      const updated: PriceList = {
+        id: editingListId,
+        name: draftName.trim(),
+        supplier: 'Custom Upload',
+        itemCount: draftPricing.itemCount,
+        uploadedDate: new Date().toLocaleDateString(),
+        active: selectedLists.includes(editingListId),
+        status: 'submitted',
+        items: draftPricing.items,
+        columns: extractColumns(draftPricing.items)
+      }
+
+      setPriceLists(priceLists.map(l => l.id === editingListId ? updated : l))
+      alert('Price list updated successfully!')
+    } else {
+      // Create new list
+      const newList: PriceList = {
+        id: `custom-${Date.now()}`,
+        name: draftName.trim(),
+        supplier: 'Custom Upload',
+        itemCount: draftPricing.itemCount,
+        uploadedDate: new Date().toLocaleDateString(),
+        active: false,
+        status: 'submitted',
+        items: draftPricing.items,
+        columns: extractColumns(draftPricing.items)
+      }
+
+      setPriceLists([...priceLists, newList])
+      alert('Price list submitted and is now available in quotes!')
     }
 
-    setPriceLists([...priceLists, newList])
     setDraftPricing(null)
     setDraftName('')
     setShowCSVPreview(false)
-    alert('Price list submitted and is now available in quotes!')
+    setEditingListId(null)
   }
 
   const handleDiscardDraft = () => {
     setDraftPricing(null)
     setDraftName('')
     setShowCSVPreview(false)
-    // Reset file input
+    setEditingListId(null)
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
     if (input) input.value = ''
   }
 
   const handleToggle = (id: string) => {
+    const updated = priceLists.map(list =>
+      list.id === id ? { ...list, active: !list.active } : list
+    )
+    setPriceLists(updated)
+
     setSelectedLists(prev =>
       prev.includes(id)
         ? prev.filter(i => i !== id)
@@ -119,7 +193,35 @@ export default function AdminPage() {
       alert('Cannot delete default price list')
       return
     }
-    setPriceLists(priceLists.filter(p => p.id !== id))
+    if (confirm('Are you sure you want to delete this price list?')) {
+      setPriceLists(priceLists.filter(p => p.id !== id))
+    }
+  }
+
+  const handleEditList = (list: PriceList) => {
+    setEditingListId(list.id)
+    setDraftPricing({
+      fileName: `${list.name}.csv`,
+      csv: generateCSV(list.items),
+      preview: list.items.slice(0, 5),
+      itemCount: list.items.length,
+      items: list.items
+    })
+    setDraftName(list.name)
+    setShowCSVPreview(true)
+  }
+
+  const generateCSV = (items: PriceItem[]): string => {
+    let csv = 'Item Name,HSN Code,Unit Price,GST %,Packing\n'
+    items.forEach(item => {
+      const itemName = item.name.includes(',') ? `"${item.name}"` : item.name
+      csv += `${itemName},"${item.hsn}",${item.price},${item.gst},"${item.packing || ''}"\n`
+    })
+    return csv
+  }
+
+  if (!mounted) {
+    return <div className="min-h-screen bg-gray-50 flex items-center justify-center">Loading...</div>
   }
 
   return (
@@ -148,9 +250,11 @@ export default function AdminPage() {
                 <label className="cursor-pointer block">
                   <div className="text-center">
                     <p className="text-4xl mb-2">📄</p>
-                    <p className="font-semibold text-gray-900">Upload Price List</p>
+                    <p className="font-semibold text-gray-900">
+                      {editingListId ? 'Update Price List' : 'Upload Price List'}
+                    </p>
                     <p className="text-sm text-gray-600 mt-1">
-                      PDF, Excel, CSV or TXT
+                      PDF, Excel, CSV, TXT, or JSON
                     </p>
                     <input
                       type="file"
@@ -165,7 +269,7 @@ export default function AdminPage() {
               </div>
             ) : (
               <div className="bg-yellow-50 rounded-lg border-2 border-yellow-300 p-6">
-                <p className="font-semibold text-yellow-900 mb-2">⚠️ Draft in Review</p>
+                <p className="font-semibold text-yellow-900 mb-2">⚠️ {editingListId ? 'Update' : 'Draft'} in Review</p>
                 <p className="text-sm text-yellow-800 mb-4">
                   {draftPricing.fileName} ({draftPricing.itemCount} items)
                 </p>
@@ -186,13 +290,13 @@ export default function AdminPage() {
                     onClick={() => setShowCSVPreview(true)}
                     className="w-full px-3 py-2 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700"
                   >
-                    Review CSV
+                    Review Data
                   </button>
                   <button
                     onClick={handleSubmitPricing}
                     className="w-full px-3 py-2 bg-green-600 text-white rounded text-sm font-medium hover:bg-green-700"
                   >
-                    Submit & Activate
+                    {editingListId ? 'Update & Save' : 'Submit & Activate'}
                   </button>
                   <button
                     onClick={handleDiscardDraft}
@@ -208,7 +312,7 @@ export default function AdminPage() {
               <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
                 <div className="bg-white rounded-lg max-w-4xl w-full max-h-96 overflow-auto">
                   <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex justify-between items-center">
-                    <h3 className="text-lg font-bold text-gray-900">CSV Preview</h3>
+                    <h3 className="text-lg font-bold text-gray-900">Data Preview</h3>
                     <button
                       onClick={() => setShowCSVPreview(false)}
                       className="text-gray-500 hover:text-gray-700 text-2xl"
@@ -252,7 +356,7 @@ export default function AdminPage() {
               <h3 className="font-semibold text-gray-900 mb-3">Instructions</h3>
               <ul className="text-sm text-gray-600 space-y-2">
                 <li>✓ Upload PDF, Excel, CSV, TXT, or JSON files</li>
-                <li>✓ For JSON: Export from Reducto with HTML table content</li>
+                <li>✓ For JSON: Export from Reducto with HTML table</li>
                 <li>✓ Requires columns: Item Name, HSN, Price, GST</li>
                 <li>✓ First row should be headers</li>
                 <li>✓ Supports batch uploads</li>
@@ -281,7 +385,7 @@ export default function AdminPage() {
                           checked={selectedLists.includes(list.id)}
                           onChange={() => handleToggle(list.id)}
                           className="w-4 h-4 rounded"
-                          disabled={list.id === 'gravity-lab-chem' || list.status === 'draft'}
+                          disabled={list.id === 'gravity-lab-chem' && list.status === 'draft'}
                         />
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
@@ -293,6 +397,11 @@ export default function AdminPage() {
                           <p className="text-sm text-gray-600">
                             {list.supplier} • {list.itemCount} items • Updated: {list.uploadedDate}
                           </p>
+                          {list.columns && list.columns.length > 0 && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              Columns: {list.columns.join(', ')}
+                            </p>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -300,12 +409,20 @@ export default function AdminPage() {
                           <span className="text-green-600 font-semibold text-sm">Active ✓</span>
                         )}
                         {list.id !== 'gravity-lab-chem' && (
-                          <button
-                            onClick={() => handleDelete(list.id)}
-                            className="text-red-600 hover:text-red-800 text-sm font-medium px-3 py-1 hover:bg-red-50 rounded"
-                          >
-                            Delete
-                          </button>
+                          <>
+                            <button
+                              onClick={() => handleEditList(list)}
+                              className="text-blue-600 hover:text-blue-800 text-sm font-medium px-3 py-1 hover:bg-blue-50 rounded"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleDelete(list.id)}
+                              className="text-red-600 hover:text-red-800 text-sm font-medium px-3 py-1 hover:bg-red-50 rounded"
+                            >
+                              Delete
+                            </button>
+                          </>
                         )}
                       </div>
                     </div>
@@ -318,63 +435,6 @@ export default function AdminPage() {
                   <strong>Active Price Lists:</strong> {selectedLists.length} selected. These will be available when creating quotes.
                 </p>
               </div>
-            </div>
-
-            {/* Settings Section */}
-            <div className="bg-white rounded-lg border border-gray-200 p-6 mt-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-6">Quotation Settings</h2>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Default GST Rate (%)
-                  </label>
-                  <input
-                    type="number"
-                    defaultValue="18"
-                    min="0"
-                    max="100"
-                    step="0.1"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                  />
-                  <p className="text-xs text-gray-600 mt-1">Applied to items without a specific GST rate</p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Default Currency
-                  </label>
-                  <select className="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                    <option>INR (₹)</option>
-                    <option>USD ($)</option>
-                    <option>EUR (€)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="flex items-center gap-3">
-                    <input type="checkbox" defaultChecked className="w-4 h-4 rounded" />
-                    <span className="text-sm font-medium text-gray-700">
-                      Show product images in quotes
-                    </span>
-                  </label>
-                  <p className="text-xs text-gray-600 mt-1">If enabled and images are available, they will appear in quotes</p>
-                </div>
-
-                <div>
-                  <label className="flex items-center gap-3">
-                    <input type="checkbox" defaultChecked className="w-4 h-4 rounded" />
-                    <span className="text-sm font-medium text-gray-700">
-                      Allow discount editing in quotes
-                    </span>
-                  </label>
-                  <p className="text-xs text-gray-600 mt-1">Users can adjust discounts for individual items</p>
-                </div>
-              </div>
-
-              <button className="mt-6 px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700">
-                Save Settings
-              </button>
             </div>
           </div>
         </div>
