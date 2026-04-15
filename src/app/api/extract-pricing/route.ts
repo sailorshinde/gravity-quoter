@@ -54,24 +54,19 @@ export async function POST(request: NextRequest) {
       const jsonText = await file.text()
       try {
         const jsonData = JSON.parse(jsonText)
-        console.log('Parsed JSON structure:', JSON.stringify(jsonData).substring(0, 1000))
 
         // Reducto exports as array with extracted fields
         if (Array.isArray(jsonData)) {
-          console.log('JSON is array with', jsonData.length, 'items')
-
           // Find the HTML table in citation.parentBlock of any field
           let htmlTable = ''
           for (let i = 0; i < jsonData.length; i++) {
             const item = jsonData[i]
-            console.log(`Item ${i} keys:`, Object.keys(item))
 
             for (const key in item) {
               const field = item[key]
               // The parentBlock is inside citation, not at top level
               if (field?.citation?.parentBlock?.content && field.citation.parentBlock.content.includes('<table>')) {
                 htmlTable = field.citation.parentBlock.content
-                console.log('Found HTML table in citation.parentBlock of field:', key)
                 break
               }
             }
@@ -81,14 +76,9 @@ export async function POST(request: NextRequest) {
           if (htmlTable) {
             pricingData = parseHtmlTableToPricing(htmlTable)
           } else {
-            console.log('No HTML table found in any citation.parentBlock')
             return NextResponse.json({
               success: false,
-              error: 'Could not find HTML table in JSON export. Make sure you exported from Reducto with table data.',
-              debug: {
-                firstItemKeys: jsonData.length > 0 ? Object.keys(jsonData[0]) : [],
-                totalItems: jsonData.length
-              }
+              error: 'Could not find HTML table in JSON export. Make sure you exported from Reducto with table data.'
             }, { status: 400 })
           }
         } else {
@@ -374,21 +364,16 @@ function extractItem(line: string, items: any[]) {
 }
 
 function parseHtmlTableToPricing(htmlContent: string): any[] {
-  console.log('parseHtmlTableToPricing called with content length:', htmlContent.length)
-  console.log('HTML content preview:', htmlContent.substring(0, 200))
-
   const items: any[] = []
 
   // Extract all table rows
   const rowMatches = Array.from(htmlContent.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g))
-  console.log('Found rows:', rowMatches.length)
 
   let isHeaderRow = true
   const columnIndices: { [key: string]: number } = {}
 
   for (let i = 0; i < rowMatches.length; i++) {
     const match = rowMatches[i]
-    console.log(`Processing row ${i}...`)
     const rowContent = match[1]
     // Match both <td> and <th> cells (headers use <th>, data uses <td>)
     const cellMatches = rowContent.matchAll(/<(?:td|th)[^>]*>([\s\S]*?)<\/(?:td|th)>/g)
@@ -400,11 +385,8 @@ function parseHtmlTableToPricing(htmlContent: string): any[] {
         .trim()
     })
 
-    console.log('Row cells:', cells)
-
     // First row is header
     if (isHeaderRow) {
-      console.log('Processing header row with cells:', cells)
       cells.forEach((cell, idx) => {
         const normalized = cell.toUpperCase()
         if (normalized.includes('PRODUCT')) columnIndices['name'] = idx
@@ -413,7 +395,6 @@ function parseHtmlTableToPricing(htmlContent: string): any[] {
         if (normalized.includes('GST')) columnIndices['gst'] = idx
         if (normalized.includes('PKG')) columnIndices['packing'] = idx
       })
-      console.log('Column indices found:', columnIndices)
       isHeaderRow = false
       continue
     }
@@ -434,18 +415,12 @@ function parseHtmlTableToPricing(htmlContent: string): any[] {
     }
     if (columnIndices['packing'] !== undefined) item.packing = cells[columnIndices['packing']]?.trim() || ''
 
-    console.log('Extracted item:', item)
-
     // Only add if we have required fields
     if (item.name && item.price && item.hsn && item.gst) {
       items.push(item)
-      console.log('Item added to list')
-    } else {
-      console.log('Item skipped - missing fields. name:', !!item.name, 'price:', !!item.price, 'hsn:', !!item.hsn, 'gst:', !!item.gst)
     }
   }
 
-  console.log('Total items extracted from HTML table:', items.length)
   return items
 }
 
