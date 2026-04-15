@@ -384,7 +384,8 @@ function parseHtmlTableToPricing(htmlContent: string): any[] {
 
   for (const match of rowMatches) {
     const rowContent = match[1]
-    const cellMatches = rowContent.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)
+    // Match both <td> and <th> cells (headers use <th>, data uses <td>)
+    const cellMatches = rowContent.matchAll(/<(?:td|th)[^>]*>([\s\S]*?)<\/(?:td|th)>/g)
     const cells = Array.from(cellMatches).map(m => {
       // Remove HTML tags and clean whitespace
       return m[1]
@@ -393,8 +394,11 @@ function parseHtmlTableToPricing(htmlContent: string): any[] {
         .trim()
     })
 
+    console.log('Row cells:', cells)
+
     // First row is header
     if (isHeaderRow) {
+      console.log('Processing header row with cells:', cells)
       cells.forEach((cell, idx) => {
         const normalized = cell.toUpperCase()
         if (normalized.includes('PRODUCT')) columnIndices['name'] = idx
@@ -403,6 +407,7 @@ function parseHtmlTableToPricing(htmlContent: string): any[] {
         if (normalized.includes('GST')) columnIndices['gst'] = idx
         if (normalized.includes('PKG')) columnIndices['packing'] = idx
       })
+      console.log('Column indices found:', columnIndices)
       isHeaderRow = false
       continue
     }
@@ -423,12 +428,18 @@ function parseHtmlTableToPricing(htmlContent: string): any[] {
     }
     if (columnIndices['packing'] !== undefined) item.packing = cells[columnIndices['packing']]?.trim() || ''
 
+    console.log('Extracted item:', item)
+
     // Only add if we have required fields
     if (item.name && item.price && item.hsn && item.gst) {
       items.push(item)
+      console.log('Item added to list')
+    } else {
+      console.log('Item skipped - missing fields. name:', !!item.name, 'price:', !!item.price, 'hsn:', !!item.hsn, 'gst:', !!item.gst)
     }
   }
 
+  console.log('Total items extracted from HTML table:', items.length)
   return items
 }
 
