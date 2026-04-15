@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
         if (Array.isArray(jsonData)) {
           console.log('JSON is array with', jsonData.length, 'items')
 
-          // Find the HTML table in parentBlock of any field
+          // Find the HTML table in citation.parentBlock of any field
           let htmlTable = ''
           for (let i = 0; i < jsonData.length; i++) {
             const item = jsonData[i]
@@ -68,16 +68,10 @@ export async function POST(request: NextRequest) {
 
             for (const key in item) {
               const field = item[key]
-              console.log(`Checking field "${key}":`, {
-                hasContent: !!field?.content,
-                hasParentBlock: !!field?.parentBlock,
-                parentBlockType: field?.parentBlock?.type,
-                hasTableContent: !!field?.parentBlock?.content?.includes('<table>')
-              })
-
-              if (field?.parentBlock?.content && field.parentBlock.content.includes('<table>')) {
-                htmlTable = field.parentBlock.content
-                console.log('Found HTML table in field:', key)
+              // The parentBlock is inside citation, not at top level
+              if (field?.citation?.parentBlock?.content && field.citation.parentBlock.content.includes('<table>')) {
+                htmlTable = field.citation.parentBlock.content
+                console.log('Found HTML table in citation.parentBlock of field:', key)
                 break
               }
             }
@@ -87,7 +81,7 @@ export async function POST(request: NextRequest) {
           if (htmlTable) {
             pricingData = parseHtmlTableToPricing(htmlTable)
           } else {
-            console.log('No HTML table found in any parentBlock')
+            console.log('No HTML table found in any citation.parentBlock')
             return NextResponse.json({
               success: false,
               error: 'Could not find HTML table in JSON export. Make sure you exported from Reducto with table data.',
