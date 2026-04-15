@@ -54,15 +54,30 @@ export async function POST(request: NextRequest) {
       const jsonText = await file.text()
       try {
         const jsonData = JSON.parse(jsonText)
+        console.log('Parsed JSON structure:', JSON.stringify(jsonData).substring(0, 1000))
 
         // Reducto exports as array with extracted fields
         if (Array.isArray(jsonData)) {
+          console.log('JSON is array with', jsonData.length, 'items')
+
           // Find the HTML table in parentBlock of any field
           let htmlTable = ''
-          for (const item of jsonData) {
+          for (let i = 0; i < jsonData.length; i++) {
+            const item = jsonData[i]
+            console.log(`Item ${i} keys:`, Object.keys(item))
+
             for (const key in item) {
-              if (item[key]?.parentBlock?.content && item[key].parentBlock.content.includes('<table>')) {
-                htmlTable = item[key].parentBlock.content
+              const field = item[key]
+              console.log(`Checking field "${key}":`, {
+                hasContent: !!field?.content,
+                hasParentBlock: !!field?.parentBlock,
+                parentBlockType: field?.parentBlock?.type,
+                hasTableContent: !!field?.parentBlock?.content?.includes('<table>')
+              })
+
+              if (field?.parentBlock?.content && field.parentBlock.content.includes('<table>')) {
+                htmlTable = field.parentBlock.content
+                console.log('Found HTML table in field:', key)
                 break
               }
             }
@@ -72,9 +87,14 @@ export async function POST(request: NextRequest) {
           if (htmlTable) {
             pricingData = parseHtmlTableToPricing(htmlTable)
           } else {
+            console.log('No HTML table found in any parentBlock')
             return NextResponse.json({
               success: false,
-              error: 'Could not find HTML table in JSON export. Make sure you exported from Reducto with table data.'
+              error: 'Could not find HTML table in JSON export. Make sure you exported from Reducto with table data.',
+              debug: {
+                firstItemKeys: jsonData.length > 0 ? Object.keys(jsonData[0]) : [],
+                totalItems: jsonData.length
+              }
             }, { status: 400 })
           }
         } else {
@@ -86,7 +106,7 @@ export async function POST(request: NextRequest) {
       } catch (e) {
         return NextResponse.json({
           success: false,
-          error: 'Invalid JSON file format'
+          error: 'Invalid JSON file format: ' + (e as any).message
         }, { status: 400 })
       }
     } else if (fileExt === 'csv' || fileExt === 'txt' || file.type === 'text/csv' || file.type === 'text/plain') {
