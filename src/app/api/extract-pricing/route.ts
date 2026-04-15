@@ -81,10 +81,30 @@ export async function POST(request: NextRequest) {
               error: 'Could not find HTML table in JSON export. Make sure you exported from Reducto with table data.'
             }, { status: 400 })
           }
+        } else if (jsonData.result && jsonData.result.chunks && Array.isArray(jsonData.result.chunks)) {
+          // Format 2: Result with chunks (markdown tables)
+          let found = false
+          for (const chunk of jsonData.result.chunks) {
+            if (chunk.content) {
+              // Parse markdown table arrays from the content
+              pricingData = parseReductoMarkdownTable(chunk.content)
+              if (pricingData.length > 0) {
+                found = true
+                break
+              }
+            }
+          }
+
+          if (!found || pricingData.length === 0) {
+            return NextResponse.json({
+              success: false,
+              error: 'Could not extract pricing data from Reducto export. Make sure it contains a price list table.'
+            }, { status: 400 })
+          }
         } else {
           return NextResponse.json({
             success: false,
-            error: 'JSON file must be a Reducto export (array format)'
+            error: 'Unrecognized JSON format. Please make sure you exported from Reducto.'
           }, { status: 400 })
         }
       } catch (e) {
@@ -361,6 +381,65 @@ function extractItem(line: string, items: any[]) {
       }
     }
   }
+}
+
+function parseReductoMarkdownTable(content: string): any[] {
+  const items: any[] = []
+
+  // Extract all array rows from the content
+  // Tables are formatted like: [["Sr.No", "Item Name", ...], ["1", "Product", ...], ...]
+  const arrayPattern = /\[\s*"([^"]+)"\s*(?:,\s*"([^"]*)"\s*)*\]/g
+  const rows: string[][] = []
+
+  let match
+  while ((match = arrayPattern.exec(content)) !== null) {
+    const row: string[] = []
+    // Extract all quoted strings in this array
+    const innerContent = match[0]
+    const stringPattern = /"([^"]*)"/g
+    let stringMatch
+    while ((stringMatch = stringPattern.exec(innerContent)) !== null) {
+      row.push(stringMatch[1])
+    }
+    if (row.length > 0) {
+      rows.push(row)
+    }
+  }
+
+  if (rows.length < 2) return items
+
+  // First row is header
+  const headers = rows[0].map(h => h.toLowerCase())
+  const nameIdx = headers.findIndex(h => h.includes('item'))
+  const priceIdx = headers.findIndex(h => h.includes('price') || h.includes('retail'))
+  const hsnIdx = headers.findIndex(h => h.includes('hsn'))
+  const gstIdx = headers.findIndex(h => h.includes('gst'))
+  const packIdx = headers.findIndex(h => h.includes('packing') || h.includes('pack'))
+
+  // Parse data rows
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i]
+    if (row.length === 0) continue
+
+    const name = row[nameIdx]?.trim() || ''
+    const priceStr = row[priceIdx]?.trim().replace(/[^0-9.]/g, '') || '0'
+    const price = parseFloat(priceStr) || 0
+    const hsn = row[hsnIdx]?.trim() || ''
+    const gst = row[gstIdx]?.trim().replace('%', '').replace(/[^0-9]/g, '') || '0'
+    const packing = row[packIdx]?.trim() || ''
+
+    if (name && price > 0 && hsn) {
+      items.push({
+        name,
+        price,
+        hsn,
+        gst,
+        packing
+      })
+    }
+  }
+
+  return items
 }
 
 function parseHtmlTableToPricing(htmlContent: string): any[] {
