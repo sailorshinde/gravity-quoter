@@ -195,80 +195,44 @@ async function extractWithReducto(pdfBuffer: Buffer, fileName: string): Promise<
   console.log('Uploading PDF to Reducto...')
 
   try {
-    // Upload the file (convert Buffer to base64)
-    const base64File = pdfBuffer.toString('base64')
-    const fileExtension = fileName.split('.').pop() || 'pdf'
-
-    console.log('Base64 file size:', base64File.length, 'bytes')
-
-    // Add timeout to upload (120 seconds for large files)
-    const uploadResponse = await Promise.race([
-      client.upload({
-        file: base64File,
-        extension: fileExtension
-      }),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Reducto upload timeout after 120 seconds')), 120000)
-      )
-    ]) as any
+    // Upload the file
+    const uploadResponse = await client.upload({
+      file: pdfBuffer,
+      filename: fileName
+    })
 
     console.log('File uploaded successfully:', uploadResponse.file_id)
 
     // Define schema for pricing extraction
-    // Reducto expects a schema that directly describes the extraction output
     const schema = {
-      type: 'object',
-      properties: {
+      items: {
+        type: 'array',
         items: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              name: { type: 'string' },
-              price: { type: 'number' },
-              hsn: { type: 'string' },
-              gst: { type: 'string' },
-              packing: { type: 'string' }
-            },
-            required: ['name', 'price', 'hsn', 'gst']
-          }
+          type: 'object',
+          properties: {
+            name: { type: 'string', description: 'Product or item name' },
+            price: { type: 'number', description: 'Unit price' },
+            hsn: { type: 'string', description: 'HSN code' },
+            gst: { type: 'string', description: 'GST percentage' },
+            packing: { type: 'string', description: 'Packing size or quantity' }
+          },
+          required: ['name', 'price', 'hsn', 'gst']
         }
-      },
-      required: ['items']
+      }
     }
 
     console.log('Extracting pricing data with Reducto...')
 
-    // Add timeout to extract (60 seconds)
-    const extractResponse = await Promise.race([
-      client.extract.run({
-        input: uploadResponse,
-        instructions: {
-          schema: schema
-        }
-      }),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Reducto extraction timeout after 60 seconds')), 60000)
-      )
-    ]) as any
+    // Extract data using schema
+    const extractResponse = await client.extract.run({
+      file_id: uploadResponse.file_id,
+      schema: schema
+    })
 
-    console.log('Extraction complete. Response:', JSON.stringify(extractResponse).substring(0, 500))
-
-    // Extract items from response - Reducto returns result which should contain our schema structure
-    let extractedItems: any[] = []
-    const response = extractResponse as any
-    if (response.result) {
-      if (Array.isArray(response.result)) {
-        extractedItems = response.result.length > 0 && response.result[0].items ? response.result[0].items : []
-      } else if (response.result.items) {
-        extractedItems = response.result.items
-      }
-    }
-
-    console.log('Extracted items count:', extractedItems.length)
+    console.log('Extraction complete. Items found:', extractResponse.items?.length || 0)
 
     // Validate and transform extracted items
-    const items = (extractedItems || [])
+    const items = (extractResponse.items || [])
       .filter((item: any) => {
         // Validate required fields
         if (!item.name || !item.price || !item.hsn || !item.gst) {
@@ -406,15 +370,43 @@ function parseReductoMarkdownTable(content: string): any[] {
     }
   }
 
-  if (rows.length < 2) return items
+  console.log('[parseReductoMarkdownTable] Extracted rows:', {
+    totalRows: rows.length,
+    firstRow: rows[0],
+    secondRow: rows[1],
+    sampleRows: rows.slice(0, 3)
+  })
+
+  if (rows.length < 2) {
+    console.log('[parseReductoMarkdownTable] Not enough rows for table parsing')
+    return items
+  }
 
   // First row is header
-  const headers = rows[0].map(h => h.toLowerCase())
-  const nameIdx = headers.findIndex(h => h.includes('item'))
-  const priceIdx = headers.findIndex(h => h.includes('price') || h.includes('retail'))
-  const hsnIdx = headers.findIndex(h => h.includes('hsn'))
-  const gstIdx = headers.findIndex(h => h.includes('gst'))
-  const packIdx = headers.findIndex(h => h.includes('packing') || h.includes('pack'))
+  const headers = rows[0]
+  const headersLower = headers.map(h => h.toLowerCase())
+
+  console.log('[parseReductoMarkdownTable] Headers:', headers)
+  console.log('[parseReductoMarkdownTable] Headers (lowercase):', headersLower)
+
+  // Find column indices with better matching
+  let nameIdx = headersLower.findIndex(h => h.includes('item') || h.includes('product') || h.includes('description'))
+  let priceIdx = headersLower.findIndex(h => h.includes('price') || h.includes('retail') || h.includes('cost') || h.includes('rate'))
+  let hsnIdx = headersLower.findIndex(h => h.includes('hsn') || h.includes('code'))
+  let gstIdx = headersLower.findIndex(h => h.includes('gst') || h.includes('tax'))
+  let packIdx = headersLower.findIndex(h => h.includes('pack') || h.includes('packing') || h.includes('size'))
+
+  console.log('[parseReductoMarkdownTable] Initial indices:', { nameIdx, priceIdx, hsnIdx, gstIdx, packIdx })
+
+  // If columns not found by keyword, try to infer from position
+  // Assume standard table order: Name/Item in first/second column, Price somewhere, HSN, GST, Packing
+  if (nameIdx === -1) nameIdx = 1
+  if (priceIdx === -1) priceIdx = headers.length > 2 ? headers.length - 2 : 2
+  if (hsnIdx === -1) hsnIdx = headers.length > 3 ? headers.length - 3 : 3
+  if (gstIdx === -1) gstIdx = headers.length > 4 ? headers.length - 4 : 4
+  if (packIdx === -1) packIdx = headers.length > 5 ? headers.length - 5 : 5
+
+  console.log('[parseReductoMarkdownTable] Final indices:', { nameIdx, priceIdx, hsnIdx, gstIdx, packIdx })
 
   // Parse data rows
   for (let i = 1; i < rows.length; i++) {
@@ -428,6 +420,10 @@ function parseReductoMarkdownTable(content: string): any[] {
     const gst = row[gstIdx]?.trim().replace('%', '').replace(/[^0-9]/g, '') || '0'
     const packing = row[packIdx]?.trim() || ''
 
+    if (i <= 3) {
+      console.log(`[parseReductoMarkdownTable] Row ${i}:`, { name, priceStr, price, hsn, gst, packing, rowData: row })
+    }
+
     if (name && price > 0 && hsn) {
       items.push({
         name,
@@ -439,6 +435,7 @@ function parseReductoMarkdownTable(content: string): any[] {
     }
   }
 
+  console.log('[parseReductoMarkdownTable] Final items:', items.length)
   return items
 }
 
