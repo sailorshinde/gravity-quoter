@@ -23,6 +23,9 @@ export default function QuoteGenerator({ pricingSource, preloadedItems = [], pre
   ])
   const [loading, setLoading] = useState(false)
   const [showUnmatchedWarning, setShowUnmatchedWarning] = useState(false)
+  const [bulkGst, setBulkGst] = useState<number | ''>('')
+  const [bulkDiscount, setBulkDiscount] = useState<number | ''>('')
+  const [showBulkApply, setShowBulkApply] = useState(false)
 
   // Update items and client name when preloaded data changes
   useEffect(() => {
@@ -46,6 +49,18 @@ export default function QuoteGenerator({ pricingSource, preloadedItems = [], pre
 
   const removeItem = (index: number) => {
     setItems(items.filter((_, i) => i !== index))
+  }
+
+  const applyBulkGstAndDiscount = () => {
+    const newItems = items.map(item => ({
+      ...item,
+      gst: bulkGst !== '' ? Number(bulkGst) : item.gst,
+      discount: bulkDiscount !== '' ? Number(bulkDiscount) : item.discount,
+    }))
+    setItems(newItems)
+    setShowBulkApply(false)
+    setBulkGst('')
+    setBulkDiscount('')
   }
 
   const generateQuote = async () => {
@@ -107,7 +122,76 @@ export default function QuoteGenerator({ pricingSource, preloadedItems = [], pre
       </div>
 
       <div className="space-y-4 mb-6">
-        <h3 className="font-semibold text-gray-900">Items</h3>
+        <div className="flex justify-between items-center">
+          <h3 className="font-semibold text-gray-900">Items</h3>
+          <button
+            onClick={() => setShowBulkApply(true)}
+            className="text-sm px-3 py-1.5 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 font-medium"
+          >
+            ⚙️ Apply GST & Discount to All
+          </button>
+        </div>
+
+        {/* Bulk Apply Modal */}
+        {showBulkApply && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 shadow-lg max-w-md w-full mx-4">
+              <h3 className="text-lg font-bold text-gray-900 mb-4">Apply to All Items</h3>
+
+              <div className="space-y-4 mb-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    GST % (optional)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="100"
+                    value={bulkGst}
+                    onChange={(e) => setBulkGst(e.target.value ? parseFloat(e.target.value) : '')}
+                    placeholder="Leave empty to skip"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Leave empty to keep current values</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Discount % (optional)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="100"
+                    value={bulkDiscount}
+                    onChange={(e) => setBulkDiscount(e.target.value ? parseFloat(e.target.value) : '')}
+                    placeholder="Leave empty to skip"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Leave empty to keep current values</p>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowBulkApply(false)}
+                  className="flex-1 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={applyBulkGstAndDiscount}
+                  disabled={bulkGst === '' && bulkDiscount === ''}
+                  className="flex-1 px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium disabled:bg-gray-300 disabled:cursor-not-allowed"
+                >
+                  Apply to All Items
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Item Selector from Pricing Database */}
         <ItemSelector
