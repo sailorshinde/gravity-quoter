@@ -154,7 +154,7 @@ export default function AdminPage() {
                     </p>
                     <input
                       type="file"
-                      accept=".pdf,.xlsx,.xls,.csv,.txt"
+                      accept=".pdf,.xlsx,.xls,.csv,.txt,.json"
                       onChange={handleUpload}
                       disabled={uploading}
                       className="hidden"
@@ -251,7 +251,8 @@ export default function AdminPage() {
             <div className="mt-6 bg-white rounded-lg border border-gray-200 p-4">
               <h3 className="font-semibold text-gray-900 mb-3">Instructions</h3>
               <ul className="text-sm text-gray-600 space-y-2">
-                <li>✓ Upload Excel or CSV files</li>
+                <li>✓ Upload PDF, Excel, CSV, TXT, or JSON files</li>
+                <li>✓ For JSON: Export from Reducto with HTML table content</li>
                 <li>✓ Requires columns: Item Name, HSN, Price, GST</li>
                 <li>✓ First row should be headers</li>
                 <li>✓ Supports batch uploads</li>

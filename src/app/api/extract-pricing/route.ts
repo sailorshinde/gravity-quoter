@@ -49,6 +49,26 @@ export async function POST(request: NextRequest) {
           }
         }, { status: 400 })
       }
+    } else if (fileExt === 'json' || file.type === 'application/json') {
+      // Handle Reducto JSON export with HTML table content
+      const jsonText = await file.text()
+      try {
+        const jsonData = JSON.parse(jsonText)
+        if (jsonData.content && typeof jsonData.content === 'string') {
+          // Parse HTML table from Reducto export
+          pricingData = parseHtmlTableToPricing(jsonData.content)
+        } else {
+          return NextResponse.json({
+            success: false,
+            error: 'JSON file must contain "content" field with HTML table data'
+          }, { status: 400 })
+        }
+      } catch (e) {
+        return NextResponse.json({
+          success: false,
+          error: 'Invalid JSON file format'
+        }, { status: 400 })
+      }
     } else if (fileExt === 'csv' || fileExt === 'txt' || file.type === 'text/csv' || file.type === 'text/plain') {
       fileContent = await file.text()
       pricingData = extractPricingFromContent(fileContent, fileExt)
@@ -317,6 +337,65 @@ function extractItem(line: string, items: any[]) {
       }
     }
   }
+}
+
+function parseHtmlTableToPricing(htmlContent: string): any[] {
+  const items: any[] = []
+
+  // Extract all table rows
+  const rowMatches = htmlContent.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)
+
+  let isHeaderRow = true
+  const columnIndices: { [key: string]: number } = {}
+
+  for (const match of rowMatches) {
+    const rowContent = match[1]
+    const cellMatches = rowContent.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)
+    const cells = Array.from(cellMatches).map(m => {
+      // Remove HTML tags and clean whitespace
+      return m[1]
+        .replace(/<[^>]*>/g, '')
+        .replace(/\n/g, ' ')
+        .trim()
+    })
+
+    // First row is header
+    if (isHeaderRow) {
+      cells.forEach((cell, idx) => {
+        const normalized = cell.toUpperCase()
+        if (normalized.includes('PRODUCT')) columnIndices['name'] = idx
+        if (normalized.includes('PRICE')) columnIndices['price'] = idx
+        if (normalized.includes('HSN')) columnIndices['hsn'] = idx
+        if (normalized.includes('GST')) columnIndices['gst'] = idx
+        if (normalized.includes('PKG')) columnIndices['packing'] = idx
+      })
+      isHeaderRow = false
+      continue
+    }
+
+    // Skip empty rows
+    if (cells.length === 0 || !cells.some(c => c.trim())) continue
+
+    // Extract pricing data
+    const item: any = {}
+    if (columnIndices['name'] !== undefined) item.name = cells[columnIndices['name']]?.trim() || ''
+    if (columnIndices['price'] !== undefined) {
+      const priceStr = cells[columnIndices['price']]?.trim() || '0'
+      item.price = parseFloat(priceStr) || 0
+    }
+    if (columnIndices['hsn'] !== undefined) item.hsn = cells[columnIndices['hsn']]?.trim() || ''
+    if (columnIndices['gst'] !== undefined) {
+      item.gst = cells[columnIndices['gst']]?.trim().replace('%', '') || '0'
+    }
+    if (columnIndices['packing'] !== undefined) item.packing = cells[columnIndices['packing']]?.trim() || ''
+
+    // Only add if we have required fields
+    if (item.name && item.price && item.hsn && item.gst) {
+      items.push(item)
+    }
+  }
+
+  return items
 }
 
 function generateCSV(items: any[]): string {
