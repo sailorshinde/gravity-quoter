@@ -14,9 +14,17 @@ export default function ItemSelector({ selectedListIds, onItemSelect }: ItemSele
   const [showSelector, setShowSelector] = useState(false)
   const [conflictResolution, setConflictResolution] = useState<{ [key: string]: string }>({})
 
+  console.log('[ItemSelector] Received selectedListIds:', selectedListIds)
+
   const searchResults = useMemo(() => {
-    if (!searchTerm || selectedListIds.length === 0) return []
-    return searchItems(searchTerm, selectedListIds)
+    if (!searchTerm || selectedListIds.length === 0) {
+      console.log('[ItemSelector] Skipping search - searchTerm:', searchTerm, 'listIds:', selectedListIds)
+      return []
+    }
+    console.log('[ItemSelector] Searching for:', searchTerm, 'in lists:', selectedListIds)
+    const results = searchItems(searchTerm, selectedListIds)
+    console.log('[ItemSelector] Search results:', results.length, results.slice(0, 3))
+    return results
   }, [searchTerm, selectedListIds])
 
   // Group results by item name to detect conflicts
